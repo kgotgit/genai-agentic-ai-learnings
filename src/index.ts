@@ -47,4 +47,5 @@ async function testOllamaConnection() {
   }
 }
 
-testOllamaConnection();
+//testOllamaConnection();
+//setupRAGPipeline(); // moved to src/rag-pipeline.ts
