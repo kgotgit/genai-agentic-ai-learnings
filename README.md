@@ -5,10 +5,12 @@ A TypeScript project for exploring generative AI and agentic AI concepts, includ
 ## Recent Changes
 
 - Added end-to-end `src/rag-pipeline.ts` flow: PDF load, split, embed, store, retrieve, and answer generation.
-- Added similarity retrieval (`k=3`) with user query input from CLI.
+- Added similarity retrieval (`k=5`) with local embedding-based reranking to keep the top 3 chunks.
+- Added an MMR-style retrieval example that uses similarity fetch followed by local MMR selection for more diverse chunk selection.
 - Added grounded prompt generation using retrieved context and Ollama `qwen3.5`.
 - Added npm scripts: `rag`, `rag:dev`, and `chroma`.
 - Added a Mermaid RAG pipeline diagram under the RAG section.
+- Added local embedding-based reranking so the pipeline does not depend on downloading a reranker model.
 
 ## Getting Started
 
@@ -66,8 +68,27 @@ The RAG pipeline (`src/rag-pipeline.ts`) implements the following steps:
 2. **Split** — Splits pages into chunks (`chunkSize: 500`, `chunkOverlap: 100`) using `RecursiveCharacterTextSplitter`
 3. **Embed** — Generates embeddings using `HuggingFaceTransformersEmbeddings` (`Xenova/all-MiniLM-L6-v2`)
 4. **Store** — Persists vectors in a local Chroma collection (`pdf_documents`)
-5. **Query** — Takes user input, runs similarity search (`k=3`), and returns the top 3 relevant chunks
+5. **Query** — Takes user input, runs similarity search (`k=5`) to fetch candidate chunks, then reranks them with local embedding similarity and keeps the top 3 chunks
 6. **Generate** — Builds a context string from retrieved chunks, constructs a grounded prompt, and calls the Ollama `qwen3.5` model for a response. If context is not aligned with the query, the model replies with `'No context found'`.
+  - The pipeline sets `think: false` for Ollama to limit verbose reasoning output and return concise final answers.
+  - The reranker uses local embedding similarity scoring, so no external reranker download is required.
+
+### MMR Retrieval Example
+
+The pipeline also includes an MMR-style mode for more diverse retrieval results. Because Chroma does not support native MMR in this setup, the pipeline fetches candidates with similarity search and then applies local MMR selection in TypeScript.
+
+```typescript
+const retriever = vectorStore.asRetriever({
+  searchType: "similarity",
+  k: 20,
+});
+
+// then apply local MMR selection with lambda = 0.5 and topK = 5
+```
+
+- The initial similarity fetch gets candidate chunks.
+- Local MMR selection then balances relevance versus diversity.
+- `lambda` balances relevance versus diversity.
 
 ### RAG Flow Diagram
 
@@ -77,14 +98,42 @@ flowchart TD
   B --> C[RecursiveCharacterTextSplitter\nchunkSize=500, chunkOverlap=100]
   C --> D[HuggingFaceTransformersEmbeddings\nXenova/all-MiniLM-L6-v2]
   D --> E[Chroma Vector Store\ncollection: pdf_documents]
-  U[User Query] --> F[Retriever\nsimilarity search, k=3]
+  U[User Query] --> F[Retriever\nsimilarity search, k=5]
   E --> F
-  F --> G[Relevant Chunks]
-  G --> H[Final Context\njoin chunk text]
-  H --> I[Prompt Builder\ncontext-grounded instruction]
-  U --> I
-  I --> J[Ollama qwen3.5]
-  J --> K[Final Answer]
+  F --> G[Candidate Chunks]
+  G --> H[Local MMR Selector]
+  H --> I[Threshold + Re-Rank]
+  I --> J[Top 3 Relevant Chunks]
+  J --> K[Final Context\njoin chunk text]
+  K --> L[Prompt Builder\ncontext-grounded instruction]
+  U --> K
+  L --> M[Ollama qwen3.5]
+  M --> N[Final Answer]
+```
+
+### Threshold Tuning Example
+
+The pipeline now shows two separate thresholding stages for better retrieval quality:
+
+1. **`similarity_score_threshold`** — filters the initial candidate chunks before reranking.
+2. **`score_threshold`** — filters reranked chunks before they are passed into the final prompt.
+
+Current example values in code:
+
+```typescript
+const SIMILARITY_SCORE_THRESHOLD = 0.25;
+const RERANK_SCORE_THRESHOLD = 0.20;
+```
+
+Example flow:
+
+```text
+Similarity search (k=5)
+→ apply similarity_score_threshold
+→ rerank by embedding similarity
+→ apply score_threshold
+→ take top 3 chunks
+→ generate final answer
 ```
 
 ### Running the RAG Pipeline
@@ -145,11 +194,8 @@ npm run rag:dev
 
 ### Troubleshooting
 
-- If you see `Cannot find package '@huggingface/transformers'` while running `npm run rag` or `npm run rag:dev`, install it with:
-
-```bash
-npm install @huggingface/transformers --legacy-peer-deps
-```
+- If Chroma is not running, start it with `npm run chroma` before running the RAG pipeline.
+- If Ollama is not running, start it with `ollama serve` and make sure the `qwen3.5` model is available.
 
 ---
 
