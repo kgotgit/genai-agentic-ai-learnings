@@ -11,10 +11,10 @@
     "rag:dev": "ts-node src/rag-pipeline.ts",
     "rag:similarity": "RETRIEVAL_MODE=similarity node dist/rag-pipeline.js",
     "rag:mmr": "RETRIEVAL_MODE=mmr node dist/rag-pipeline.js",
-    "rag:ensemble": "RETRIEVAL_MODE=ensemble node dist/rag-pipeline.js",
+    "rag:hybrid": "RETRIEVAL_MODE=hybrid node dist/rag-pipeline.js",
     "rag:dev:similarity": "RETRIEVAL_MODE=similarity ts-node src/rag-pipeline.ts",
     "rag:dev:mmr": "RETRIEVAL_MODE=mmr ts-node src/rag-pipeline.ts",
-    "rag:dev:ensemble": "RETRIEVAL_MODE=ensemble ts-node src/rag-pipeline.ts",
+    "rag:dev:hybrid": "RETRIEVAL_MODE=hybrid ts-node src/rag-pipeline.ts",
     "chroma": "~/Library/Python/3.9/bin/chroma run --path ./db",
     "clean": "rm -rf dist"
   },
@@ -31,10 +31,13 @@
     "@langchain/anthropic": "^1.5.0",
     "@langchain/community": "^1.1.29",
     "@langchain/core": "^1.2.0",
+    "@langchain/groq": "^1.0.1",
     "@langchain/langgraph": "^1.4.4",
     "@langchain/ollama": "^1.3.0",
     "@langchain/openai": "^1.5.1",
     "chromadb": "^3.4.3",
+    "dotenv": "^16.6.1",
+    "faiss-node": "^0.5.1",
     "langchain": "^1.5.0",
     "pdf-parse": "^2.4.5"
   }
