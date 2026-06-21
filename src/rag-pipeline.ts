@@ -2,19 +2,107 @@ import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddings/huggingface_transformers";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
+import { BM25Retriever } from "@langchain/community/retrievers/bm25";
+import { EnsembleRetriever } from "@langchain/classic/retrievers/ensemble";
 import { Ollama } from "@langchain/ollama";
 import { Document } from "@langchain/core/documents";
 import * as readline from "readline";
+import { promises as fs } from "fs";
+import * as path from "path";
+
+type RetrievalMode = "similarity" | "mmr" | "ensemble";
 
 const SIMILARITY_SCORE_THRESHOLD = 0.25;
 const RERANK_SCORE_THRESHOLD = 0.20;
-const RETRIEVAL_MODE: "similarity" | "mmr" = "mmr";
+const DEFAULT_RETRIEVAL_MODE: RetrievalMode = "ensemble";
 const MMR_FETCH_K = 20;
 const MMR_LAMBDA = 0.5;
 const MMR_TOP_K = 5;
+const SIMILARITY_K = 5;
+const ENSEMBLE_BM25_K = 5;
+const ENSEMBLE_VECTOR_K = 5;
+const ENSEMBLE_TOP_K = 8;
+const ENSEMBLE_WEIGHTS: [number, number] = [0.3, 0.7];
+const CACHE_ENABLED_MODES: RetrievalMode[] = ["ensemble"];
+const QUERY_RESPONSE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const QUERY_RESPONSE_CACHE_PATH = path.resolve(
+  process.cwd(),
+  "db",
+  "query-response-cache.json"
+);
+
+type QueryResponseCacheEntry = {
+  response: string;
+  createdAt: string;
+};
+
+type QueryResponseCache = Record<string, QueryResponseCacheEntry>;
+
+function isRetrievalMode(value: string): value is RetrievalMode {
+  return value === "similarity" || value === "mmr" || value === "ensemble";
+}
+
+function getRetrievalMode(): RetrievalMode {
+  const cliModeArg = process.argv
+    .slice(2)
+    .find((arg) => arg.startsWith("--retrieval-mode=") || arg.startsWith("--mode="));
+
+  const cliValue = cliModeArg?.split("=")[1]?.toLowerCase();
+  if (cliValue && isRetrievalMode(cliValue)) {
+    return cliValue;
+  }
+
+  const envValue = process.env.RETRIEVAL_MODE?.toLowerCase();
+  if (envValue && isRetrievalMode(envValue)) {
+    return envValue;
+  }
+
+  return DEFAULT_RETRIEVAL_MODE;
+}
 
 async function setupRAGPipeline() {
   try {
+    const retrievalMode = getRetrievalMode();
+
+    console.log(`🔧 Active retrieval mode: ${retrievalMode}`);
+
+    const userInput = await promptUser("🔍 Enter your query: ");
+    console.log(`\n📡 Searching for: "${userInput}"\n`);
+
+    const cacheEnabled = CACHE_ENABLED_MODES.includes(retrievalMode);
+    const cacheKey = buildCacheKey(retrievalMode, userInput);
+    const queryResponseCache = cacheEnabled
+      ? await loadQueryResponseCache(QUERY_RESPONSE_CACHE_PATH)
+      : {};
+
+    if (cacheEnabled) {
+      const cachedResponse = getCachedResponse(
+        queryResponseCache,
+        cacheKey,
+        QUERY_RESPONSE_CACHE_TTL_MS
+      );
+
+      if (cachedResponse) {
+        console.log("⚡ Cache hit: returning stored response\n");
+        console.log("=".repeat(60));
+        console.log("💬 Model Response (from cache):");
+        console.log("=".repeat(60));
+        console.log(cachedResponse);
+        console.log("=".repeat(60));
+
+        return {
+          pages: [],
+          chunks: [],
+          vectorStore: null,
+          hfEmbeddings: null,
+          relevantChunks: [],
+          response: cachedResponse,
+        };
+      }
+
+      console.log("🗃️ Cache miss: running retrieval and generation\n");
+    }
+
     console.log("📚 Loading PDF document...");
 
     // Load PDF
@@ -69,27 +157,44 @@ async function setupRAGPipeline() {
     console.log(`   - Documents: ${chunks.length}`);
     console.log(`   - Embedding Model: Xenova/all-MiniLM-L6-v2\n`);
 
-    // Take user input and perform similarity search
-    const userInput = await promptUser("🔍 Enter your query: ");
-
-    console.log(`\n📡 Searching for: "${userInput}"\n`);
-
     // Performing retrieval to fetch candidate chunks
-    const retriever = vectorStore.asRetriever({
-      searchType: "similarity",
-      k: RETRIEVAL_MODE === "mmr" ? MMR_FETCH_K : 5,
-    });
+    let candidateChunks: Document[] = [];
 
-    console.log(
-      `🔎 Retrieval mode: ${RETRIEVAL_MODE} (k=${RETRIEVAL_MODE === "mmr" ? MMR_FETCH_K : 5}${RETRIEVAL_MODE === "mmr" ? `, localMMR topK=${MMR_TOP_K}, lambda=${MMR_LAMBDA}` : ""})`
-    );
+    if (retrievalMode === "ensemble") {
+      const bm25Retriever = BM25Retriever.fromDocuments(chromaReadyChunks, {
+        k: ENSEMBLE_BM25_K,
+      });
+      const denseRetriever = vectorStore.asRetriever({
+        searchType: "similarity",
+        k: ENSEMBLE_VECTOR_K,
+      });
+      const ensembleRetriever = new EnsembleRetriever({
+        retrievers: [bm25Retriever, denseRetriever],
+        weights: ENSEMBLE_WEIGHTS,
+      });
 
-    const candidateChunks = await retriever.invoke(userInput);
+      console.log(
+        `🔎 Retrieval mode: ensemble (bm25_k=${ENSEMBLE_BM25_K}, vector_k=${ENSEMBLE_VECTOR_K}, weights=[${ENSEMBLE_WEIGHTS[0]}, ${ENSEMBLE_WEIGHTS[1]}])`
+      );
+
+      candidateChunks = await ensembleRetriever.invoke(userInput);
+    } else {
+      const retriever = vectorStore.asRetriever({
+        searchType: "similarity",
+        k: retrievalMode === "mmr" ? MMR_FETCH_K : SIMILARITY_K,
+      });
+
+      console.log(
+        `🔎 Retrieval mode: ${retrievalMode} (k=${retrievalMode === "mmr" ? MMR_FETCH_K : SIMILARITY_K}${retrievalMode === "mmr" ? `, localMMR topK=${MMR_TOP_K}, lambda=${MMR_LAMBDA}` : ""})`
+      );
+
+      candidateChunks = await retriever.invoke(userInput);
+    }
 
     console.log(`✅ Retrieved ${candidateChunks.length} candidate chunks\n`);
 
     const selectedCandidates =
-      RETRIEVAL_MODE === "mmr"
+      retrievalMode === "mmr"
         ? await selectMMRChunks(
             userInput,
             candidateChunks,
@@ -97,10 +202,13 @@ async function setupRAGPipeline() {
             MMR_TOP_K,
             MMR_LAMBDA
           )
-        : candidateChunks.slice(0, 5);
+        : candidateChunks.slice(
+            0,
+            retrievalMode === "ensemble" ? ENSEMBLE_TOP_K : SIMILARITY_K
+          );
 
     console.log(
-      `✅ Selected ${selectedCandidates.length} chunks using ${RETRIEVAL_MODE === "mmr" ? "local MMR" : "similarity"}\n`
+      `✅ Selected ${selectedCandidates.length} chunks using ${retrievalMode === "mmr" ? "local MMR" : retrievalMode === "ensemble" ? "EnsembleRetriever (RRF)" : "similarity"}\n`
     );
 
     const thresholdedCandidates = await applySimilarityThreshold(
@@ -176,6 +284,15 @@ async function setupRAGPipeline() {
     console.log("=".repeat(60));
     console.log(response);
     console.log("=".repeat(60));
+
+    if (cacheEnabled) {
+      queryResponseCache[cacheKey] = {
+        response,
+        createdAt: new Date().toISOString(),
+      };
+      await saveQueryResponseCache(QUERY_RESPONSE_CACHE_PATH, queryResponseCache);
+      console.log("💾 Saved response to query-response cache\n");
+    }
 
     return { pages, chunks, vectorStore, hfEmbeddings, relevantChunks, response };
   } catch (error) {
@@ -337,6 +454,62 @@ function sanitizeMetadata(metadata: Record<string, unknown>): Record<string, str
     pageNumber: typeof pageNumber === "number" ? pageNumber : -1,
     pdf: metadata?.pdf ? JSON.stringify(metadata.pdf) : null,
   };
+}
+
+function normalizeQuery(query: string): string {
+  return query.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function buildCacheKey(retrievalMode: RetrievalMode, query: string): string {
+  return `${retrievalMode}::${normalizeQuery(query)}`;
+}
+
+async function loadQueryResponseCache(
+  cachePath: string
+): Promise<QueryResponseCache> {
+  try {
+    const content = await fs.readFile(cachePath, "utf-8");
+    const parsed = JSON.parse(content) as QueryResponseCache;
+    return parsed ?? {};
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {};
+    }
+    console.warn("⚠️ Failed to load cache file, continuing without cache file state");
+    return {};
+  }
+}
+
+async function saveQueryResponseCache(
+  cachePath: string,
+  cache: QueryResponseCache
+): Promise<void> {
+  const dirPath = path.dirname(cachePath);
+  await fs.mkdir(dirPath, { recursive: true });
+  await fs.writeFile(cachePath, JSON.stringify(cache, null, 2), "utf-8");
+}
+
+function getCachedResponse(
+  cache: QueryResponseCache,
+  cacheKey: string,
+  ttlMs: number
+): string | null {
+  const entry = cache[cacheKey];
+  if (!entry) {
+    return null;
+  }
+
+  const createdAt = new Date(entry.createdAt).getTime();
+  if (Number.isNaN(createdAt)) {
+    return null;
+  }
+
+  if (Date.now() - createdAt > ttlMs) {
+    delete cache[cacheKey];
+    return null;
+  }
+
+  return entry.response;
 }
 
 setupRAGPipeline();

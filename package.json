@@ -9,6 +9,12 @@
     "start": "node dist/index.js",
     "rag": "node dist/rag-pipeline.js",
     "rag:dev": "ts-node src/rag-pipeline.ts",
+    "rag:similarity": "RETRIEVAL_MODE=similarity node dist/rag-pipeline.js",
+    "rag:mmr": "RETRIEVAL_MODE=mmr node dist/rag-pipeline.js",
+    "rag:ensemble": "RETRIEVAL_MODE=ensemble node dist/rag-pipeline.js",
+    "rag:dev:similarity": "RETRIEVAL_MODE=similarity ts-node src/rag-pipeline.ts",
+    "rag:dev:mmr": "RETRIEVAL_MODE=mmr ts-node src/rag-pipeline.ts",
+    "rag:dev:ensemble": "RETRIEVAL_MODE=ensemble ts-node src/rag-pipeline.ts",
     "chroma": "~/Library/Python/3.9/bin/chroma run --path ./db",
     "clean": "rm -rf dist"
   },

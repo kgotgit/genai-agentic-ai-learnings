@@ -11,6 +11,8 @@ A TypeScript project for exploring generative AI and agentic AI concepts, includ
 - Added npm scripts: `rag`, `rag:dev`, and `chroma`.
 - Added a Mermaid RAG pipeline diagram under the RAG section.
 - Added local embedding-based reranking so the pipeline does not depend on downloading a reranker model.
+- Added hybrid retrieval with `EnsembleRetriever` (BM25 sparse + Chroma dense) using weighted RRF.
+- Added persistent query-response cache for `ensemble` mode (`db/query-response-cache.json`) with TTL.
 
 ## Getting Started
 
@@ -55,6 +57,12 @@ package.json        - Project dependencies and scripts
 | `npm start` | Run compiled `index.js` |
 | `npm run rag` | Run compiled RAG pipeline |
 | `npm run rag:dev` | Run RAG pipeline directly via ts-node (no build needed) |
+| `npm run rag:similarity` | Run compiled RAG pipeline with `similarity` retrieval |
+| `npm run rag:mmr` | Run compiled RAG pipeline with `mmr` retrieval |
+| `npm run rag:ensemble` | Run compiled RAG pipeline with `ensemble` retrieval |
+| `npm run rag:dev:similarity` | Run ts-node RAG pipeline with `similarity` retrieval |
+| `npm run rag:dev:mmr` | Run ts-node RAG pipeline with `mmr` retrieval |
+| `npm run rag:dev:ensemble` | Run ts-node RAG pipeline with `ensemble` retrieval |
 | `npm run chroma` | Start the Chroma vector database server |
 | `npm run clean` | Remove compiled `dist/` output |
 
@@ -68,10 +76,15 @@ The RAG pipeline (`src/rag-pipeline.ts`) implements the following steps:
 2. **Split** — Splits pages into chunks (`chunkSize: 500`, `chunkOverlap: 100`) using `RecursiveCharacterTextSplitter`
 3. **Embed** — Generates embeddings using `HuggingFaceTransformersEmbeddings` (`Xenova/all-MiniLM-L6-v2`)
 4. **Store** — Persists vectors in a local Chroma collection (`pdf_documents`)
-5. **Query** — Takes user input, runs similarity search (`k=5`) to fetch candidate chunks, then reranks them with local embedding similarity and keeps the top 3 chunks
+5. **Query** — Takes user input and retrieves candidate chunks using one of:
+  - `similarity` (dense-only)
+  - `mmr` (similarity fetch + local MMR selection)
+  - `ensemble` (BM25 + dense retriever fused with weighted RRF)
+  Then reranks candidates with local embedding similarity and keeps the top chunks.
 6. **Generate** — Builds a context string from retrieved chunks, constructs a grounded prompt, and calls the Ollama `qwen3.5` model for a response. If context is not aligned with the query, the model replies with `'No context found'`.
   - The pipeline sets `think: false` for Ollama to limit verbose reasoning output and return concise final answers.
   - The reranker uses local embedding similarity scoring, so no external reranker download is required.
+7. **Cache (Ensemble mode)** — For repeated queries in `ensemble` mode, the pipeline checks a query-response cache first and returns cached responses immediately when available.
 
 ### MMR Retrieval Example
 
@@ -89,6 +102,42 @@ const retriever = vectorStore.asRetriever({
 - The initial similarity fetch gets candidate chunks.
 - Local MMR selection then balances relevance versus diversity.
 - `lambda` balances relevance versus diversity.
+
+### Ensemble Retriever Example (Hybrid Search)
+
+The pipeline also supports a hybrid retriever equivalent to your Python snippet using:
+
+- `BM25Retriever` for sparse keyword retrieval
+- Chroma retriever for dense semantic retrieval
+- `EnsembleRetriever` for weighted RRF fusion
+
+Current example in code:
+
+```typescript
+const bm25Retriever = BM25Retriever.fromDocuments(chunks, { k: 5 });
+const denseRetriever = vectorStore.asRetriever({ searchType: "similarity", k: 5 });
+
+const ensembleRetriever = new EnsembleRetriever({
+  retrievers: [bm25Retriever, denseRetriever],
+  weights: [0.3, 0.7],
+});
+
+const docs = await ensembleRetriever.invoke(userQuery);
+```
+
+This mirrors the Python `EnsembleRetriever` pattern and gives a hybrid blend of lexical and semantic matching.
+
+### Query-Response Cache
+
+- Cache is enabled for `ensemble` mode.
+- Cache key format: `retrievalMode + normalizedQuery`.
+- Cache file: `db/query-response-cache.json`.
+- TTL: 24 hours.
+
+Behavior:
+
+- Cache hit: skips retrieval + rerank + model call and returns stored response.
+- Cache miss: runs full pipeline and saves response to cache.
 
 ### RAG Flow Diagram
 
@@ -137,6 +186,36 @@ Similarity search (k=5)
 ```
 
 ### Running the RAG Pipeline
+
+### Pass Retrieval Mode
+
+You can pass retrieval mode at runtime (instead of changing code):
+
+- Environment variable: `RETRIEVAL_MODE=similarity|mmr|ensemble`
+- CLI flag: `--retrieval-mode=similarity|mmr|ensemble` (or `--mode=...`)
+
+Examples:
+
+```bash
+RETRIEVAL_MODE=similarity npm run rag:dev
+RETRIEVAL_MODE=mmr npm run rag:dev
+RETRIEVAL_MODE=ensemble npm run rag:dev
+```
+
+```bash
+npm run rag:dev -- --retrieval-mode=mmr
+npm run rag:dev -- --mode=ensemble
+```
+
+Priority order is: CLI flag > environment variable > default (`ensemble`).
+
+Shortcut scripts:
+
+```bash
+npm run rag:dev:similarity
+npm run rag:dev:mmr
+npm run rag:dev:ensemble
+```
 
 ### Quick Run Flow (Recommended)
 
@@ -191,6 +270,8 @@ npm run rag:dev
 | `langchain_text_splitters` | `@langchain/textsplitters` | Document chunking |
 | `langchain_huggingface.HuggingFaceEmbeddings` | `@langchain/community/embeddings/huggingface_transformers` | Embeddings |
 | `langchain_chroma.Chroma` | `@langchain/community/vectorstores/chroma` + `chromadb` | Vector store |
+| `langchain_community.retrievers.BM25Retriever` | `@langchain/community/retrievers/bm25` | Sparse retrieval |
+| `langchain.retrievers.EnsembleRetriever` | `@langchain/classic/retrievers/ensemble` | Hybrid weighted RRF fusion |
 
 ### Troubleshooting
 
