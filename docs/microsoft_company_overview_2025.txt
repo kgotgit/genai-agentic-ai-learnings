@@ -1,0 +1,99 @@
+Microsoft Corporation – Company Overview (2025)
+
+1.  Basic Information Company Name: Microsoft Corporation Founded: April
+    4, 1975 Founders: Bill Gates and Paul Allen Headquarters: Redmond,
+    Washington, United States CEO (2025): Satya Nadella Industry:
+    Software, Cloud Computing, Artificial Intelligence, Consumer
+    Electronics
+
+Microsoft is one of the largest technology companies in the world, known
+for products such as Windows operating systems, Microsoft Office, Azure
+cloud services, Xbox gaming systems, and enterprise software solutions.
+
+2.  History of Microsoft
+
+1975–1985: Foundation and Early Growth Microsoft was founded in 1975 by
+Bill Gates and Paul Allen in Albuquerque, New Mexico. The company
+initially developed software for early personal computers, starting with
+a version of the BASIC programming language for the Altair 8800.
+
+In 1980, Microsoft partnered with IBM to supply the MS‑DOS operating
+system for IBM personal computers. This partnership accelerated
+Microsoft’s growth and helped establish its dominance in the PC software
+market.
+
+1985–2000: Windows and Office Era Microsoft launched Windows in 1985 as
+a graphical interface for MS‑DOS. Over time, Windows became the dominant
+operating system for personal computers worldwide.
+
+In the early 1990s Microsoft introduced Microsoft Office, a productivity
+suite including Word, Excel, and PowerPoint. It quickly became the
+standard productivity software for businesses globally.
+
+2000–2014: Diversification Microsoft expanded into several new markets
+including: - Gaming (Xbox console launched in 2001) - Enterprise server
+software - Online services - Search engine (Bing)
+
+2014–Present: Cloud and AI Transformation When Satya Nadella became CEO
+in 2014, Microsoft shifted its focus toward cloud computing and
+artificial intelligence.
+
+Major developments include: - Rapid growth of Microsoft Azure -
+Expansion of enterprise cloud services - Integration of AI
+technologies - Strategic investments and partnerships in AI research
+
+3.  Microsoft Revenue (Fiscal Year 2025)
+
+Total Revenue (FY 2025): approximately $281.7 billion Net Income:
+approximately $101.8 billion
+
+Major revenue drivers include: - Azure Cloud Services - Microsoft 365
+Commercial Products - Windows Operating Systems - LinkedIn - Xbox and
+Gaming - Search and Advertising (Bing)
+
+Cloud services, particularly Azure, remain the fastest growing revenue
+segment.
+
+4.  Number of Employees (2025)
+
+Total Employees: approximately 228,000 worldwide.
+
+Microsoft employs engineers, researchers, designers, product managers,
+sales teams, and support professionals across the globe.
+
+5.  Global Presence and Locations
+
+Microsoft operates in more than 190 countries and has offices, research
+centers, and cloud data centers worldwide.
+
+Major locations include: - Redmond, Washington (Global Headquarters) -
+Mountain View, California (Engineering and AI) - New York, USA
+(Enterprise services) - London, UK (Cloud and AI hub) - Hyderabad,
+Bangalore, Noida (India development centers) - Dublin, Ireland (European
+headquarters) - Singapore (Asia Pacific regional hub) - Beijing, China
+(Research center)
+
+6.  Major Microsoft Products and Services
+
+Operating Systems - Windows 10 - Windows 11
+
+Productivity Software - Microsoft Office - Microsoft 365
+
+Cloud & Enterprise - Microsoft Azure - Dynamics 365
+
+Collaboration Tools - Microsoft Teams - Outlook
+
+Gaming - Xbox - Xbox Game Pass
+
+AI & Search - Bing - Microsoft Copilot - Azure AI Services
+
+7.  Mission
+
+Microsoft’s mission is: “To empower every person and every organization
+on the planet to achieve more.”
+
+8.  Future Focus Areas
+
+Microsoft continues to invest heavily in: - Artificial Intelligence -
+Cloud Computing - Enterprise Productivity Platforms - Cybersecurity -
+Gaming Ecosystems - AI-powered assistants and copilots
