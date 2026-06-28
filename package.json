@@ -15,6 +15,8 @@
     "rag:dev:similarity": "RETRIEVAL_MODE=similarity ts-node src/rag-pipeline.ts",
     "rag:dev:mmr": "RETRIEVAL_MODE=mmr ts-node src/rag-pipeline.ts",
     "rag:dev:hybrid": "RETRIEVAL_MODE=hybrid ts-node src/rag-pipeline.ts",
+    "eval:dialogsum": "node dist/dialogsum-eval.js",
+    "eval:dialogsum:dev": "ts-node src/dialogsum-eval.ts",
     "chroma": "~/Library/Python/3.9/bin/chroma run --path ./db",
     "clean": "rm -rf dist"
   },

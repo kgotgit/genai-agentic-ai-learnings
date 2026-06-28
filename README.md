@@ -63,8 +63,33 @@ package.json        - Project dependencies and scripts
 | `npm run rag:dev:similarity` | Run ts-node RAG pipeline with `similarity` retrieval |
 | `npm run rag:dev:mmr` | Run ts-node RAG pipeline with `mmr` retrieval |
 | `npm run rag:dev:ensemble` | Run ts-node RAG pipeline with `ensemble` retrieval |
+| `npm run eval:dialogsum` | Run compiled DialogSum evaluation |
+| `npm run eval:dialogsum:dev` | Run DialogSum evaluation via ts-node |
 | `npm run chroma` | Start the Chroma vector database server |
 | `npm run clean` | Remove compiled `dist/` output |
+
+---
+
+## DialogSum Evaluation
+
+Run summarization evaluation on 5 samples from `knkarthick/dialogsum` using Groq generation and compute BLEU, ROUGE, and BERTScore.
+
+```bash
+npm run eval:dialogsum:dev
+```
+
+Optional environment variables:
+
+- `GROQ_API_KEY` (required)
+- `GROQ_MODEL` (default: `llama-3.3-70b-versatile`)
+- `DIALOGSUM_CONFIG` (default: `default`)
+- `DIALOGSUM_SPLIT` (default: `test`)
+- `DIALOGSUM_OFFSET` (default: `0`)
+- `DIALOGSUM_SAMPLE_SIZE` (default: `5`)
+- `BERT_MODEL` (default: `Xenova/all-MiniLM-L6-v2`)
+- `EVAL_OUTPUT_PATH` (default: `db/dialogsum-eval-results.json`)
+
+The script prints per-sample and aggregate metrics and stores full results in `db/dialogsum-eval-results.json`.
 
 ---
 
