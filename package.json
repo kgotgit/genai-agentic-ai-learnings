@@ -17,6 +17,7 @@
     "rag:dev:hybrid": "RETRIEVAL_MODE=hybrid ts-node src/rag-pipeline.ts",
     "eval:dialogsum": "node dist/dialogsum-eval.js",
     "eval:dialogsum:dev": "ts-node src/dialogsum-eval.ts",
+    "azure:mini": "ts-node src/azuer-custom-model/azure-gpt-mini.ts",
     "chroma": "~/Library/Python/3.9/bin/chroma run --path ./db",
     "clean": "rm -rf dist"
   },

@@ -4,12 +4,12 @@ import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddin
 import { BM25Retriever } from "@langchain/community/retrievers/bm25";
 import { FaissStore } from "@langchain/community/vectorstores/faiss";
 import { Document } from "@langchain/core/documents";
-import { ChatGroq } from "@langchain/groq";
 import { EnsembleRetriever } from "@langchain/classic/retrievers/ensemble";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as readline from "readline";
+import { createChatModel } from "./llm";
 
 dotenv.config();
 
@@ -18,7 +18,6 @@ type RetrievalMode = "similarity" | "mmr" | "hybrid";
 const EMBEDDING_MODEL = resolveEmbeddingModel(
   process.env.EMBEDDING_MODEL ?? "Xenova/bge-m3"
 );
-const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
 const DEFAULT_RETRIEVAL_MODE: RetrievalMode = "hybrid";
 const SIMILARITY_SCORE_THRESHOLD = 0.25;
 const RERANK_SCORE_THRESHOLD = 0.2;
@@ -92,24 +91,15 @@ function shouldForceReindex(): boolean {
   );
 }
 
-function ensureGroqApiKey(): string {
-  const apiKey = process.env.GROQ_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("Missing GROQ_API_KEY environment variable.");
-  }
-
-  return apiKey;
-}
-
 export async function setupRAGPipeline() {
   try {
     const retrievalMode = getRetrievalMode();
-    const groqApiKey = ensureGroqApiKey();
+    const { llm, provider, model } = createChatModel({ temperature: 0 });
 
     console.log(`🔧 Active retrieval mode: ${retrievalMode}`);
     console.log(`🧠 Embedding model: ${EMBEDDING_MODEL}`);
-    console.log(`🤖 Groq model: ${GROQ_MODEL}`);
+    console.log(`🤖 LLM provider: ${provider}`);
+    console.log(`🤖 LLM model: ${model}`);
 
     const userInput = (await promptUser("🔍 Enter your query: ")).trim();
     if (!userInput) {
@@ -318,12 +308,7 @@ User query: ${userInput}
 Context: ${finalContext}
     `;
 
-    console.log(`🤖 Calling Groq model: ${GROQ_MODEL}...\n`);
-    const llm = new ChatGroq({
-      apiKey: groqApiKey,
-      model: GROQ_MODEL,
-      temperature: 0,
-    });
+    console.log(`🤖 Calling ${provider} model: ${model}...\n`);
 
     const llmResponse = await llm.invoke(prompt);
     const response = extractResponseText(llmResponse.content);
@@ -605,8 +590,20 @@ function normalizeQuery(query: string): string {
   return query.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function resolveCacheModelKey(): string {
+  const provider = process.env.LLM_PROVIDER?.toLowerCase() === "azure" ? "azure" : "groq";
+
+  if (provider === "azure") {
+    const deployment = process.env.AZURE_OPENAI_DEPLOYMENT ?? "unknown-azure-deployment";
+    return `${provider}:${deployment}`;
+  }
+
+  const model = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
+  return `${provider}:${model}`;
+}
+
 function buildCacheKey(retrievalMode: RetrievalMode, query: string): string {
-  return `${retrievalMode}::${GROQ_MODEL}::${EMBEDDING_MODEL}::${normalizeQuery(query)}`;
+  return `${retrievalMode}::${resolveCacheModelKey()}::${EMBEDDING_MODEL}::${normalizeQuery(query)}`;
 }
 
 async function loadQueryResponseCache(

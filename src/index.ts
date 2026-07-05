@@ -1,27 +1,16 @@
 import * as dotenv from "dotenv";
-import { ChatGroq } from "@langchain/groq";
+import { createChatModel } from "./llm";
 import { setupRAGPipeline } from "./rag-pipeline";
 
 dotenv.config();
 
 async function testGroqConnection() {
   try {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) {
-      throw new Error("Missing GROQ_API_KEY environment variable.");
-    }
+    const { llm, provider, model } = createChatModel({ temperature: 0 });
 
-    const model = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
+    console.log(`🚀 Initializing ${provider} with ${model} model...`);
 
-    console.log(`🚀 Initializing Groq with ${model} model...`);
-
-    const llm = new ChatGroq({
-      apiKey,
-      model,
-      temperature: 0,
-    });
-
-    console.log("✅ Groq connection established!");
+    console.log("✅ LLM connection established!");
     console.log("\n📝 Testing sample prompt...\n");
 
     const prompt = "What is TypeScript and why is it useful?";
@@ -44,7 +33,9 @@ async function testGroqConnection() {
       "❌ Error:",
       error instanceof Error ? error.message : String(error)
     );
-    console.error("\n⚠️  Make sure GROQ_API_KEY is set in the environment.");
+    console.error(
+      "\n⚠️  Check LLM_PROVIDER and its required environment variables."
+    );
     process.exit(1);
   }
 }

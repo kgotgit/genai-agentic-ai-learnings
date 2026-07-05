@@ -1,8 +1,8 @@
 import * as dotenv from "dotenv";
-import { ChatGroq } from "@langchain/groq";
 import { pipeline } from "@huggingface/transformers";
 import { promises as fs } from "fs";
 import * as path from "path";
+import { AppChatModel, createChatModel } from "./llm";
 
 dotenv.config();
 
@@ -48,7 +48,8 @@ type EvalOutput = {
     split: string;
     offset: number;
     sampleSize: number;
-    groqModel: string;
+    llmProvider: string;
+    llmModel: string;
     bertModel: string;
   };
   aggregate: AggregateMetrics;
@@ -75,23 +76,11 @@ const DEFAULT_SAMPLE_SIZE = Number.parseInt(
   process.env.DIALOGSUM_SAMPLE_SIZE ?? "5",
   10
 );
-const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
 const BERT_MODEL = process.env.BERT_MODEL ?? "Xenova/all-MiniLM-L6-v2";
 const OUTPUT_PATH = path.resolve(
   process.cwd(),
   process.env.EVAL_OUTPUT_PATH ?? "db/dialogsum-eval-results.json"
 );
-
-/**
- * Ensures the Groq API key is present in environment variables.
- */
-function ensureGroqApiKey(): string {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing GROQ_API_KEY environment variable.");
-  }
-  return apiKey;
-}
 
 /**
  * Extracts plain text from LangChain chat model output content.
@@ -618,7 +607,7 @@ async function fetchDialogSumRows(
  * Calls Groq to produce a concise one-sentence summary for a dialogue.
  */
 async function summarizeDialog(
-  llm: ChatGroq,
+  llm: AppChatModel,
   dialog: string
 ): Promise<string> {
   const prompt = `You are a dialogue summarization assistant.
@@ -657,7 +646,7 @@ async function saveOutput(output: EvalOutput): Promise<void> {
  * fetch, summarize, score, aggregate, and save results.
  */
 async function runEval(): Promise<void> {
-  const groqApiKey = ensureGroqApiKey();
+  const { llm, provider, model } = createChatModel({ temperature: 0 });
 
   const split = DEFAULT_SPLIT;
   const offset = Number.isNaN(DEFAULT_OFFSET) ? 0 : DEFAULT_OFFSET;
@@ -676,13 +665,8 @@ async function runEval(): Promise<void> {
 
   console.log(`✅ Loaded ${samples.length} unique dialogs.`);
 
-  const llm = new ChatGroq({
-    apiKey: groqApiKey,
-    model: GROQ_MODEL,
-    temperature: 0,
-  });
-
-  console.log(`🤖 Using Groq model: ${GROQ_MODEL}`);
+  console.log(`🤖 Using LLM provider: ${provider}`);
+  console.log(`🤖 Using LLM model: ${model}`);
   console.log(`🧠 Loading BERT scorer model: ${BERT_MODEL}`);
 
   const extractor = (await pipeline("feature-extraction", BERT_MODEL)) as (
@@ -737,7 +721,8 @@ async function runEval(): Promise<void> {
       split,
       offset,
       sampleSize: samples.length,
-      groqModel: GROQ_MODEL,
+      llmProvider: provider,
+      llmModel: model,
       bertModel: BERT_MODEL,
     },
     aggregate,
@@ -750,7 +735,7 @@ async function runEval(): Promise<void> {
   console.log("\n================ EVALUATION SUMMARY ================");
   console.log(`Dataset     : ${DATASET_NAME} (config=${DATASET_CONFIG}, split=${split})`);
   console.log(`Samples     : ${samples.length} unique dialogs (offset=${offset})`);
-  console.log(`Groq model  : ${GROQ_MODEL}`);
+  console.log(`LLM         : ${provider}/${model}`);
   console.log(`BERT model  : ${BERT_MODEL}`);
   console.log(`BLEU-4      : ${aggregate.bleu4.toFixed(4)}`);
   console.log(`ROUGE-1 F1  : ${aggregate.rouge1F1.toFixed(4)}`);
