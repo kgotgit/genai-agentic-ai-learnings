@@ -1,30 +1,38 @@
+import * as dotenv from "dotenv";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddings/huggingface_transformers";
-import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { BM25Retriever } from "@langchain/community/retrievers/bm25";
-import { EnsembleRetriever } from "@langchain/classic/retrievers/ensemble";
-import { Ollama } from "@langchain/ollama";
+import { FaissStore } from "@langchain/community/vectorstores/faiss";
 import { Document } from "@langchain/core/documents";
-import * as readline from "readline";
+import { EnsembleRetriever } from "@langchain/classic/retrievers/ensemble";
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { promises as fs } from "fs";
 import * as path from "path";
+import * as readline from "readline";
+import { createChatModel } from "./llm";
 
-type RetrievalMode = "similarity" | "mmr" | "ensemble";
+dotenv.config();
 
+type RetrievalMode = "similarity" | "mmr" | "hybrid";
+
+const EMBEDDING_MODEL = resolveEmbeddingModel(
+  process.env.EMBEDDING_MODEL ?? "Xenova/bge-m3"
+);
+const DEFAULT_RETRIEVAL_MODE: RetrievalMode = "hybrid";
 const SIMILARITY_SCORE_THRESHOLD = 0.25;
-const RERANK_SCORE_THRESHOLD = 0.20;
-const DEFAULT_RETRIEVAL_MODE: RetrievalMode = "ensemble";
+const RERANK_SCORE_THRESHOLD = 0.2;
 const MMR_FETCH_K = 20;
 const MMR_LAMBDA = 0.5;
 const MMR_TOP_K = 5;
 const SIMILARITY_K = 5;
-const ENSEMBLE_BM25_K = 5;
-const ENSEMBLE_VECTOR_K = 5;
-const ENSEMBLE_TOP_K = 8;
-const ENSEMBLE_WEIGHTS: [number, number] = [0.3, 0.7];
-const CACHE_ENABLED_MODES: RetrievalMode[] = ["ensemble"];
+const HYBRID_BM25_K = 5;
+const HYBRID_VECTOR_K = 5;
+const HYBRID_TOP_K = 8;
+const HYBRID_WEIGHTS: [number, number] = [0.3, 0.7];
+const CACHE_ENABLED_MODES: RetrievalMode[] = ["similarity", "mmr", "hybrid"];
 const QUERY_RESPONSE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const DOCS_DIRECTORY_PATH = path.resolve(process.cwd(), "docs");
+const FAISS_INDEX_PATH = path.resolve(process.cwd(), "db", "faiss");
 const QUERY_RESPONSE_CACHE_PATH = path.resolve(
   process.cwd(),
   "db",
@@ -38,8 +46,24 @@ type QueryResponseCacheEntry = {
 
 type QueryResponseCache = Record<string, QueryResponseCacheEntry>;
 
+type ChunkScore = {
+  chunk: Document;
+  score: number;
+};
+
+function resolveEmbeddingModel(modelName: string): string {
+  if (modelName === "BAAI/bge-m3") {
+    console.log(
+      "ℹ️ Using Xenova/bge-m3 ONNX weights for local JavaScript inference."
+    );
+    return "Xenova/bge-m3";
+  }
+
+  return modelName;
+}
+
 function isRetrievalMode(value: string): value is RetrievalMode {
-  return value === "similarity" || value === "mmr" || value === "ensemble";
+  return value === "similarity" || value === "mmr" || value === "hybrid";
 }
 
 function getRetrievalMode(): RetrievalMode {
@@ -60,18 +84,33 @@ function getRetrievalMode(): RetrievalMode {
   return DEFAULT_RETRIEVAL_MODE;
 }
 
-async function setupRAGPipeline() {
+function shouldForceReindex(): boolean {
+  return (
+    process.argv.includes("--reindex") ||
+    process.env.FORCE_REINDEX?.toLowerCase() === "true"
+  );
+}
+
+export async function setupRAGPipeline() {
   try {
     const retrievalMode = getRetrievalMode();
+    const { llm, provider, model } = createChatModel({ temperature: 0 });
 
     console.log(`🔧 Active retrieval mode: ${retrievalMode}`);
+    console.log(`🧠 Embedding model: ${EMBEDDING_MODEL}`);
+    console.log(`🤖 LLM provider: ${provider}`);
+    console.log(`🤖 LLM model: ${model}`);
 
-    const userInput = await promptUser("🔍 Enter your query: ");
+    const userInput = (await promptUser("🔍 Enter your query: ")).trim();
+    if (!userInput) {
+      throw new Error("Query cannot be empty.");
+    }
+
     console.log(`\n📡 Searching for: "${userInput}"\n`);
 
     const cacheEnabled = CACHE_ENABLED_MODES.includes(retrievalMode);
     const cacheKey = buildCacheKey(retrievalMode, userInput);
-    const queryResponseCache = cacheEnabled
+    const queryResponseCache: QueryResponseCache = cacheEnabled
       ? await loadQueryResponseCache(QUERY_RESPONSE_CACHE_PATH)
       : {};
 
@@ -103,17 +142,15 @@ async function setupRAGPipeline() {
       console.log("🗃️ Cache miss: running retrieval and generation\n");
     }
 
-    console.log("📚 Loading PDF document...");
+    console.log("📚 Loading documents from docs directory...");
+    const pages = await loadDocumentsFromDirectory(DOCS_DIRECTORY_PATH);
 
-    // Load PDF
-    const pdfPath =
-      "/Users/karthikgotrala/Documents/AgileFeverAICourse/genai-agentic-ai-learnings/docs/1706.03762v7.pdf";
-    const loader = new PDFLoader(pdfPath);
-    const pages = await loader.load();
+    if (pages.length === 0) {
+      throw new Error(`No readable documents found in ${DOCS_DIRECTORY_PATH}`);
+    }
 
-    console.log(`✅ Loaded ${pages.length} pages from PDF\n`);
+    console.log(`✅ Loaded ${pages.length} documents from docs directory\n`);
 
-    // Text splitting
     console.log("✂️  Splitting documents into chunks...");
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 500,
@@ -121,74 +158,70 @@ async function setupRAGPipeline() {
     });
 
     const chunks = await textSplitter.splitDocuments(pages);
-    const chromaReadyChunks = chunks.map(
+    if (chunks.length === 0) {
+      throw new Error("Document loading completed, but no chunks were created.");
+    }
+
+    const vectorReadyChunks = chunks.map(
       (chunk) =>
         new Document({
           pageContent: chunk.pageContent,
-          metadata: sanitizeMetadata(chunk.metadata),
+          metadata: sanitizeMetadata((chunk.metadata ?? {}) as Record<string, unknown>),
         })
     );
 
     console.log(`✅ Created ${chunks.length} chunks from documents\n`);
     console.log("📋 First chunk preview:");
-    console.log(chunks[0].pageContent.substring(0, 200) + "...\n");
+    console.log(`${chunks[0].pageContent.substring(0, 200)}...\n`);
 
-    // Get embedding model
     console.log("🧠 Initializing HuggingFace embeddings model...");
     const hfEmbeddings = new HuggingFaceTransformersEmbeddings({
-      model: "Xenova/all-MiniLM-L6-v2",
+      model: EMBEDDING_MODEL,
     });
-
     console.log("✅ Embeddings model initialized\n");
 
-    // Create vector database with Chroma
-    console.log("🗄️  Creating Chroma vector database...");
-    const vectorStore = await Chroma.fromDocuments(chromaReadyChunks, hfEmbeddings, {
-      collectionName: "pdf_documents",
-      url: "http://localhost:8000",
-      collectionMetadata: {
-        source: "transformer_paper",
-      },
-    });
+    console.log("🗄️  Creating/loading FAISS vector database...");
+    const vectorStore = await loadOrCreateFaissVectorStore(
+      vectorReadyChunks,
+      hfEmbeddings,
+      shouldForceReindex()
+    );
 
-    console.log("✅ Vector database created and persisted\n");
+    console.log("✅ FAISS vector database ready\n");
     console.log("📊 Vector Store Summary:");
-    console.log(`   - Collection: pdf_documents`);
+    console.log(`   - Index Path: ${FAISS_INDEX_PATH}`);
     console.log(`   - Documents: ${chunks.length}`);
-    console.log(`   - Embedding Model: Xenova/all-MiniLM-L6-v2\n`);
+    console.log(`   - Embedding Model: ${EMBEDDING_MODEL}\n`);
 
-    // Performing retrieval to fetch candidate chunks
     let candidateChunks: Document[] = [];
 
-    if (retrievalMode === "ensemble") {
-      const bm25Retriever = BM25Retriever.fromDocuments(chromaReadyChunks, {
-        k: ENSEMBLE_BM25_K,
+    if (retrievalMode === "hybrid") {
+      const bm25Retriever = BM25Retriever.fromDocuments(vectorReadyChunks, {
+        k: HYBRID_BM25_K,
       });
       const denseRetriever = vectorStore.asRetriever({
         searchType: "similarity",
-        k: ENSEMBLE_VECTOR_K,
+        k: HYBRID_VECTOR_K,
       });
-      const ensembleRetriever = new EnsembleRetriever({
+      const hybridRetriever = new EnsembleRetriever({
         retrievers: [bm25Retriever, denseRetriever],
-        weights: ENSEMBLE_WEIGHTS,
+        weights: HYBRID_WEIGHTS,
       });
 
       console.log(
-        `🔎 Retrieval mode: ensemble (bm25_k=${ENSEMBLE_BM25_K}, vector_k=${ENSEMBLE_VECTOR_K}, weights=[${ENSEMBLE_WEIGHTS[0]}, ${ENSEMBLE_WEIGHTS[1]}])`
+        `🔎 Retrieval mode: hybrid (bm25_k=${HYBRID_BM25_K}, vector_k=${HYBRID_VECTOR_K}, weights=[${HYBRID_WEIGHTS[0]}, ${HYBRID_WEIGHTS[1]}])`
       );
 
-      candidateChunks = await ensembleRetriever.invoke(userInput);
+      candidateChunks = await hybridRetriever.invoke(userInput);
     } else {
-      const retriever = vectorStore.asRetriever({
-        searchType: "similarity",
-        k: retrievalMode === "mmr" ? MMR_FETCH_K : SIMILARITY_K,
-      });
+      candidateChunks = await vectorStore.similaritySearch(
+        userInput,
+        retrievalMode === "mmr" ? MMR_FETCH_K : SIMILARITY_K
+      );
 
       console.log(
         `🔎 Retrieval mode: ${retrievalMode} (k=${retrievalMode === "mmr" ? MMR_FETCH_K : SIMILARITY_K}${retrievalMode === "mmr" ? `, localMMR topK=${MMR_TOP_K}, lambda=${MMR_LAMBDA}` : ""})`
       );
-
-      candidateChunks = await retriever.invoke(userInput);
     }
 
     console.log(`✅ Retrieved ${candidateChunks.length} candidate chunks\n`);
@@ -204,11 +237,11 @@ async function setupRAGPipeline() {
           )
         : candidateChunks.slice(
             0,
-            retrievalMode === "ensemble" ? ENSEMBLE_TOP_K : SIMILARITY_K
+            retrievalMode === "hybrid" ? HYBRID_TOP_K : SIMILARITY_K
           );
 
     console.log(
-      `✅ Selected ${selectedCandidates.length} chunks using ${retrievalMode === "mmr" ? "local MMR" : retrievalMode === "ensemble" ? "EnsembleRetriever (RRF)" : "similarity"}\n`
+      `✅ Selected ${selectedCandidates.length} chunks using ${retrievalMode === "mmr" ? "local MMR" : retrievalMode === "hybrid" ? "hybrid retrieval" : "similarity"}\n`
     );
 
     const thresholdedCandidates = await applySimilarityThreshold(
@@ -222,13 +255,13 @@ async function setupRAGPipeline() {
       `✅ Kept ${thresholdedCandidates.length} chunks after similarity_score_threshold=${SIMILARITY_SCORE_THRESHOLD}\n`
     );
 
-    // Rerank chunks using embedding similarity scores
     console.log("🧠 Reranking candidate chunks with embedding similarity...");
     const rankedChunks = await rerankChunks(
       userInput,
       thresholdedCandidates,
       hfEmbeddings
     );
+
     const relevantChunks = rankedChunks
       .filter((item) => item.score >= RERANK_SCORE_THRESHOLD)
       .slice(0, 3)
@@ -245,39 +278,40 @@ async function setupRAGPipeline() {
       `✅ Kept ${relevantChunks.length} chunks after score_threshold=${RERANK_SCORE_THRESHOLD}\n`
     );
 
-    console.log(`✅ Found ${relevantChunks.length} relevant chunks\n`);
-
     relevantChunks.forEach((chunk, index) => {
       console.log(`--- Chunk ${index + 1} ---`);
-      console.log(`📄 Source: Page ${chunk.metadata?.loc?.pageNumber ?? "unknown"}`);
+      const sourceLabel =
+        typeof chunk.metadata?.fileName === "string"
+          ? chunk.metadata.fileName
+          : typeof chunk.metadata?.source === "string"
+            ? chunk.metadata.source
+            : "unknown";
+      const pageLabel =
+        typeof chunk.metadata?.pageNumber === "number" && chunk.metadata.pageNumber >= 0
+          ? `, Page ${chunk.metadata.pageNumber}`
+          : "";
+
+      console.log(`📄 Source: ${sourceLabel}${pageLabel}`);
       console.log(`📝 Content:\n${chunk.pageContent}\n`);
     });
 
-    // Prepare final context from retrieved chunks
     const finalContext = relevantChunks.map((chunk) => chunk.pageContent).join("\n");
-
-    // Build prompt
     const prompt = `
-        You are an expert in analyzing user queries. Refer to the below user query and context to build a response.
-        If the context is not aligned with the user query, reply with 'No context found'.
-        Do not use your own knowledge to build the response.
-      Return only the final answer in a concise form.
-      Do not include thinking process, analysis steps, or internal reasoning.
+You are an expert in analyzing user queries. Refer to the below user query and context to build a response.
+If the context is not aligned with the user query, reply with 'No context found'.
+Do not use your own knowledge to build the response.
+Return only the final answer in a concise form.
+Do not include thinking process, analysis steps, or internal reasoning.
 
-        User query: ${userInput}
+User query: ${userInput}
 
-        Context: ${finalContext}
-        `;
+Context: ${finalContext}
+    `;
 
-    // Call Ollama qwen model
-    console.log("🤖 Calling Ollama qwen3.5 model...\n");
-    const llm = new Ollama({
-      baseUrl: "http://localhost:11434",
-      model: "qwen3.5",
-      think: false,
-    });
+    console.log(`🤖 Calling ${provider} model: ${model}...\n`);
 
-    const response = await llm.invoke(prompt);
+    const llmResponse = await llm.invoke(prompt);
+    const response = extractResponseText(llmResponse.content);
 
     console.log("=".repeat(60));
     console.log("💬 Model Response:");
@@ -294,7 +328,14 @@ async function setupRAGPipeline() {
       console.log("💾 Saved response to query-response cache\n");
     }
 
-    return { pages, chunks, vectorStore, hfEmbeddings, relevantChunks, response };
+    return {
+      pages,
+      chunks,
+      vectorStore,
+      hfEmbeddings,
+      relevantChunks,
+      response,
+    };
   } catch (error) {
     console.error(
       "❌ Error:",
@@ -304,10 +345,53 @@ async function setupRAGPipeline() {
   }
 }
 
-type ChunkScore = {
-  chunk: Document;
-  score: number;
-};
+function extractResponseText(
+  content: string | Array<{ type?: string; text?: string }>
+): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  return content
+    .map((item) => (typeof item.text === "string" ? item.text : ""))
+    .join("")
+    .trim();
+}
+
+async function loadOrCreateFaissVectorStore(
+  documents: Document[],
+  embeddings: HuggingFaceTransformersEmbeddings,
+  forceReindex: boolean
+): Promise<FaissStore> {
+  const hasIndex = await hasPersistedFaissIndex(FAISS_INDEX_PATH);
+
+  if (!forceReindex && hasIndex) {
+    console.log("📦 Loading existing FAISS index from disk...");
+    return await FaissStore.load(FAISS_INDEX_PATH, embeddings);
+  }
+
+  console.log(
+    forceReindex
+      ? "♻️  Rebuilding FAISS index because reindex was requested..."
+      : "🆕 Building new FAISS index..."
+  );
+
+  const vectorStore = await FaissStore.fromDocuments(documents, embeddings);
+  await fs.mkdir(FAISS_INDEX_PATH, { recursive: true });
+  await vectorStore.save(FAISS_INDEX_PATH);
+
+  console.log("💾 Saved FAISS index to disk");
+  return vectorStore;
+}
+
+async function hasPersistedFaissIndex(indexPath: string): Promise<boolean> {
+  try {
+    const files = await fs.readdir(indexPath);
+    return files.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 async function rerankChunks(
   query: string,
@@ -435,6 +519,7 @@ function promptUser(question: string): Promise<string> {
     input: process.stdin,
     output: process.stdout,
   });
+
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
       rl.close();
@@ -443,16 +528,61 @@ function promptUser(question: string): Promise<string> {
   });
 }
 
-function sanitizeMetadata(metadata: Record<string, unknown>): Record<string, string | number | boolean | null> {
+async function loadDocumentsFromDirectory(directoryPath: string): Promise<Document[]> {
+  const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+  const files = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b));
+
+  const loadedDocuments = await Promise.all(
+    files.map(async (fileName) => {
+      const filePath = path.join(directoryPath, fileName);
+      const extension = path.extname(fileName).toLowerCase();
+
+      try {
+        if (extension === ".pdf") {
+          const loader = new PDFLoader(filePath);
+          return await loader.load();
+        }
+
+        const content = await fs.readFile(filePath, "utf-8");
+        return [
+          new Document({
+            pageContent: content,
+            metadata: {
+              source: filePath,
+              fileName,
+              fileType: extension || "unknown",
+            },
+          }),
+        ];
+      } catch (error) {
+        console.warn(
+          `⚠️  Skipping unreadable file: ${fileName} (${error instanceof Error ? error.message : String(error)})`
+        );
+        return [];
+      }
+    })
+  );
+
+  return loadedDocuments.flat();
+}
+
+function sanitizeMetadata(
+  metadata: Record<string, unknown> = {}
+): Record<string, string | number | boolean | null> {
   const pageNumber =
-    typeof metadata?.loc === "object" && metadata.loc !== null
+    typeof metadata.loc === "object" && metadata.loc !== null
       ? ((metadata.loc as { pageNumber?: unknown }).pageNumber as unknown)
       : undefined;
 
   return {
-    source: typeof metadata?.source === "string" ? metadata.source : "unknown",
+    source: typeof metadata.source === "string" ? metadata.source : "unknown",
+    fileName: typeof metadata.fileName === "string" ? metadata.fileName : null,
+    fileType: typeof metadata.fileType === "string" ? metadata.fileType : null,
     pageNumber: typeof pageNumber === "number" ? pageNumber : -1,
-    pdf: metadata?.pdf ? JSON.stringify(metadata.pdf) : null,
+    pdf: metadata.pdf ? JSON.stringify(metadata.pdf) : null,
   };
 }
 
@@ -460,8 +590,20 @@ function normalizeQuery(query: string): string {
   return query.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function resolveCacheModelKey(): string {
+  const provider = process.env.LLM_PROVIDER?.toLowerCase() === "azure" ? "azure" : "groq";
+
+  if (provider === "azure") {
+    const deployment = process.env.AZURE_OPENAI_DEPLOYMENT ?? "unknown-azure-deployment";
+    return `${provider}:${deployment}`;
+  }
+
+  const model = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
+  return `${provider}:${model}`;
+}
+
 function buildCacheKey(retrievalMode: RetrievalMode, query: string): string {
-  return `${retrievalMode}::${normalizeQuery(query)}`;
+  return `${retrievalMode}::${resolveCacheModelKey()}::${EMBEDDING_MODEL}::${normalizeQuery(query)}`;
 }
 
 async function loadQueryResponseCache(
@@ -475,7 +617,10 @@ async function loadQueryResponseCache(
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return {};
     }
-    console.warn("⚠️ Failed to load cache file, continuing without cache file state");
+
+    console.warn(
+      `⚠️  Failed to read query cache. Starting with empty cache. (${error instanceof Error ? error.message : String(error)})`
+    );
     return {};
   }
 }
@@ -505,11 +650,12 @@ function getCachedResponse(
   }
 
   if (Date.now() - createdAt > ttlMs) {
-    delete cache[cacheKey];
     return null;
   }
 
   return entry.response;
 }
 
-setupRAGPipeline();
+if (require.main === module) {
+  void setupRAGPipeline();
+}

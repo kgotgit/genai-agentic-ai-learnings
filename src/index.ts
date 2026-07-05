@@ -1,51 +1,52 @@
-import { Ollama } from "@langchain/ollama";
+import * as dotenv from "dotenv";
+import { createChatModel } from "./llm";
+import { setupRAGPipeline } from "./rag-pipeline";
 
-async function testOllamaConnection() {
+dotenv.config();
+
+async function testGroqConnection() {
   try {
-    console.log("🚀 Initializing Ollama with qwen3.5 model...");
+    const { llm, provider, model } = createChatModel({ temperature: 0 });
 
-    const llm = new Ollama({
-      baseUrl: "http://localhost:11434",
-      model: "qwen3.5",
-    });
+    console.log(`🚀 Initializing ${provider} with ${model} model...`);
 
-    console.log("✅ Ollama connection established!");
-    console.log("\n📝 Testing sample prompts...\n");
+    console.log("✅ LLM connection established!");
+    console.log("\n📝 Testing sample prompt...\n");
 
-    // Test 1: Simple question
-    const prompt1 = "What is TypeScript and why is it useful?";
-    console.log(`📌 Prompt 1: ${prompt1}`);
+    const prompt = "What is TypeScript and why is it useful?";
+    console.log(`📌 Prompt: ${prompt}`);
     console.log("---");
-    const response1 = await llm.invoke(prompt1);
-    console.log(`Response: ${response1}\n`);
+    const response = await llm.invoke(prompt);
+    const text =
+      typeof response.content === "string"
+        ? response.content
+        : response.content
+            .map((item) =>
+              "text" in item && typeof item.text === "string" ? item.text : ""
+            )
+            .join("");
 
-    // Test 2: Code generation
-    const prompt2 =
-      "Write a simple async function in TypeScript that fetches data from an API";
-    console.log(`📌 Prompt 2: ${prompt2}`);
-    console.log("---");
-    const response2 = await llm.invoke(prompt2);
-    console.log(`Response: ${response2}\n`);
-
-    // Test 3: Explanation
-    const prompt3 = "Explain the concept of LLMs in one paragraph";
-    console.log(`📌 Prompt 3: ${prompt3}`);
-    console.log("---");
-    const response3 = await llm.invoke(prompt3);
-    console.log(`Response: ${response3}\n`);
-
-    console.log("✨ All tests completed successfully!");
+    console.log(`Response: ${text}\n`);
+    console.log("✨ Test completed successfully!");
   } catch (error) {
     console.error(
       "❌ Error:",
       error instanceof Error ? error.message : String(error)
     );
-    console.error("\n⚠️  Make sure Ollama is running at http://localhost:11434");
-    console.error("   Run: ollama serve");
-    console.error("   Then pull model: ollama pull qwen3.5");
+    console.error(
+      "\n⚠️  Check LLM_PROVIDER and its required environment variables."
+    );
     process.exit(1);
   }
 }
 
-//testOllamaConnection();
-//setupRAGPipeline(); // moved to src/rag-pipeline.ts
+async function main() {
+  if (process.argv.includes("--test-groq")) {
+    await testGroqConnection();
+    return;
+  }
+
+  await setupRAGPipeline();
+}
+
+void main();

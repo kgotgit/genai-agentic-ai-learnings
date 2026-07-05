@@ -27,6 +27,12 @@ A TypeScript project for exploring generative AI and agentic AI concepts, includ
 npm install
 ```
 
+Create environment file:
+
+```bash
+cp .env.example .env
+```
+
 Install the Chroma server (one-time):
 ```bash
 pip3 install chromadb
@@ -63,8 +69,54 @@ package.json        - Project dependencies and scripts
 | `npm run rag:dev:similarity` | Run ts-node RAG pipeline with `similarity` retrieval |
 | `npm run rag:dev:mmr` | Run ts-node RAG pipeline with `mmr` retrieval |
 | `npm run rag:dev:ensemble` | Run ts-node RAG pipeline with `ensemble` retrieval |
+| `npm run eval:dialogsum` | Run compiled DialogSum evaluation |
+| `npm run eval:dialogsum:dev` | Run DialogSum evaluation via ts-node |
 | `npm run chroma` | Start the Chroma vector database server |
 | `npm run clean` | Remove compiled `dist/` output |
+
+---
+
+## DialogSum Evaluation
+
+Run summarization evaluation on 5 samples from `knkarthick/dialogsum` using Groq generation and compute BLEU, ROUGE, and BERTScore.
+
+```bash
+npm run eval:dialogsum:dev
+```
+
+Optional environment variables:
+
+- `LLM_PROVIDER` (default: `groq`, options: `groq` or `azure`)
+- `GROQ_API_KEY` (required when `LLM_PROVIDER=groq`)
+- `GROQ_MODEL` (default: `llama-3.3-70b-versatile`, used for `groq`)
+- `AZURE_API_KEY` or `AZURE_OPENAI_API_KEY` (required when `LLM_PROVIDER=azure`)
+- `AZURE_OPENAI_DEPLOYMENT` (required when `LLM_PROVIDER=azure`)
+- `AZURE_OPENAI_BASE_URL` or `AZURE_OPENAI_ENDPOINT` (required when `LLM_PROVIDER=azure`)
+- `DIALOGSUM_CONFIG` (default: `default`)
+- `DIALOGSUM_SPLIT` (default: `test`)
+- `DIALOGSUM_OFFSET` (default: `0`)
+- `DIALOGSUM_SAMPLE_SIZE` (default: `5`)
+- `BERT_MODEL` (default: `Xenova/all-MiniLM-L6-v2`)
+- `EVAL_OUTPUT_PATH` (default: `db/dialogsum-eval-results.json`)
+
+### LLM Provider Toggle (Groq / Azure)
+
+Use `.env` to switch providers without code changes:
+
+```env
+LLM_PROVIDER=groq
+GROQ_API_KEY=...
+GROQ_MODEL=llama-3.3-70b-versatile
+```
+
+```env
+LLM_PROVIDER=azure
+AZURE_API_KEY=...
+AZURE_OPENAI_DEPLOYMENT=gpt-5.4-mini
+AZURE_OPENAI_BASE_URL=https://<resource>.openai.azure.com/openai/v1
+```
+
+The script prints per-sample and aggregate metrics and stores full results in `db/dialogsum-eval-results.json`.
 
 ---
 
