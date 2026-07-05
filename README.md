@@ -13,6 +13,7 @@ A TypeScript project for exploring generative AI and agentic AI concepts, includ
 - Added local embedding-based reranking so the pipeline does not depend on downloading a reranker model.
 - Added hybrid retrieval with `EnsembleRetriever` (BM25 sparse + Chroma dense) using weighted RRF.
 - Added persistent query-response cache for `ensemble` mode (`db/query-response-cache.json`) with TTL.
+- Added a separate Azure RAG example pipeline using Azure OpenAI embeddings + Azure AI Search vector store + Azure chat.
 
 ## Getting Started
 
@@ -45,6 +46,7 @@ pip3 install chromadb
 src/
   index.ts          - Ollama LLM connection test
   rag-pipeline.ts   - Full RAG pipeline (PDF → Chunks → Embeddings → Chroma → Query)
+  azure-rag-pipeline.ts - Azure OpenAI RAG example (PDF → Chunks → Azure embeddings → Azure AI Search → Query)
 dist/               - Compiled JavaScript output
 docs/               - Source documents (PDFs)
 db/                 - Chroma vector database persistence
@@ -69,6 +71,7 @@ package.json        - Project dependencies and scripts
 | `npm run rag:dev:similarity` | Run ts-node RAG pipeline with `similarity` retrieval |
 | `npm run rag:dev:mmr` | Run ts-node RAG pipeline with `mmr` retrieval |
 | `npm run rag:dev:ensemble` | Run ts-node RAG pipeline with `ensemble` retrieval |
+| `npm run rag:azure` | Run the Azure RAG example via ts-node |
 | `npm run eval:dialogsum` | Run compiled DialogSum evaluation |
 | `npm run eval:dialogsum:dev` | Run DialogSum evaluation via ts-node |
 | `npm run chroma` | Start the Chroma vector database server |
@@ -115,6 +118,32 @@ AZURE_API_KEY=...
 AZURE_OPENAI_DEPLOYMENT=gpt-5.4-mini
 AZURE_OPENAI_BASE_URL=https://<resource>.openai.azure.com/openai/v1
 ```
+
+## Azure RAG Example
+
+This repo keeps both RAG examples for future reference:
+
+- Existing pipeline: [src/rag-pipeline.ts](src/rag-pipeline.ts) using local Hugging Face embeddings.
+- Azure pipeline: [src/azure-rag-pipeline.ts](src/azure-rag-pipeline.ts) using Azure OpenAI embeddings, Azure AI Search vector store, and Azure chat.
+
+Run the Azure RAG example with:
+
+```bash
+npm run rag:azure
+```
+
+Azure RAG environment variables:
+
+- `AZURE_OPENAI_API_KEY` or `AZURE_OPENAI_API_EMBEDDING_KEY`
+- `AZURE_OPENAI_ENDPOINT`
+- `AZURE_OPENAI_API_VERSION` (default: `2023-05-15`)
+- `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` (default: `text-embedding-3-small`)
+- `AZURE_OPENAI_CHAT_DEPLOYMENT` (default: `gpt-5.4-mini`)
+- `AZURE_AISEARCH_ENDPOINT` (or `AZURE_SEARCH_ENDPOINT`)
+- `AZURE_AISEARCH_KEY` (or `AZURE_SEARCH_API_KEY`)
+- `AZURE_AISEARCH_INDEX_NAME` (or `AZURE_SEARCH_INDEX_NAME`, default: `practice-demo`)
+
+The Azure example uploads chunks directly into Azure AI Search (like your Python flow), so it does not use the local FAISS path.
 
 The script prints per-sample and aggregate metrics and stores full results in `db/dialogsum-eval-results.json`.
 
