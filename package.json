@@ -20,6 +20,7 @@
     "eval:dialogsum:dev": "ts-node src/dialogsum-eval.ts",
     "chatbot": "ts-node src/chatbot.ts",
     "agent": "ts-node src/langchain-agent.ts",
+    "agent:sequential": "ts-node src/langchain-sequential-agent.ts",
     "azure:mini": "ts-node src/azuer-custom-model/azure-gpt-mini.ts",
     "chroma": "~/Library/Python/3.9/bin/chroma run --path ./db",
     "clean": "rm -rf dist"
