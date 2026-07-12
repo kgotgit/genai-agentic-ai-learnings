@@ -2,6 +2,7 @@ import { ChatGroq } from "@langchain/groq";
 import { tool } from "@langchain/core/tools";
 import { ToolMessage, HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
 import { StateGraph, MessagesAnnotation, END, START } from "@langchain/langgraph";
+import { TavilySearchAPIWrapper } from "@langchain/tavily";
 import { z } from "zod";
 import * as dotenv from "dotenv";
 
@@ -40,7 +41,44 @@ const addTwoNumbersTool = tool(
   }
 );
 
-const tools = [generateRandomNumberTool, addTwoNumbersTool];
+const tavilySearchApi = new TavilySearchAPIWrapper({
+  tavilyApiKey: process.env.TAVILY_API_KEY,
+});
+
+const tavilySearchTool = tool(
+  async (input: { query: string }) => {
+    const response = await tavilySearchApi.rawResults({
+      query: input.query,
+      max_results: 3,
+      search_depth: "basic",
+      topic: "general",
+      include_answer: true,
+    });
+
+    return JSON.stringify(
+      {
+        query: input.query,
+        answer: response.answer ?? "",
+        results: (response.results ?? []).map((result) => ({
+          title: result.title,
+          url: result.url,
+          content: result.content,
+        })),
+      },
+      null,
+      2
+    );
+  },
+  {
+    name: "tavily_search",
+    description: "Search the web for recent information and return a concise set of relevant results.",
+    schema: z.object({
+      query: z.string().describe("The web search query."),
+    }),
+  }
+);
+
+const tools = [generateRandomNumberTool, addTwoNumbersTool, tavilySearchTool];
 // Build a lookup map for fast tool dispatch
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const toolMap: Record<string, any> = Object.fromEntries(tools.map((t) => [t.name, t]));
@@ -119,10 +157,11 @@ async function runAgent(userPrompt: string) {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log("LangChain Agent with Groq (StateGraph) — Two Tools Demo");
+  console.log("LangChain Agent with Groq (StateGraph) — Tools Demo");
   console.log("Tools available:");
   console.log("  1. generate_random_number — generates a random number 1–10000");
-  console.log("  2. add_two_numbers        — adds two numbers together\n");
+  console.log("  2. add_two_numbers        — adds two numbers together");
+  console.log("  3. tavily_search          — searches the web via Tavily\n");
 
   // Triggers generate_random_number
   await runAgent("Can you generate a random number for me?");
@@ -135,6 +174,9 @@ async function main() {
 
   // Triggers add_two_numbers
   await runAgent("Please add 1500 and 2500 together.");
+
+  // Triggers Tavily web search
+  await runAgent("Search the web and summarize the latest TypeScript 5.9 highlights.");
 }
 
 main().catch(console.error);
