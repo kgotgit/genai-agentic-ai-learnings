@@ -21,6 +21,8 @@
     "chatbot": "ts-node src/chatbot.ts",
     "agent": "ts-node src/langchain-agent.ts",
     "agent:sequential": "ts-node src/langchain-sequential-agent.ts",
+    "agent:chatbot": "ts-node src/agentic-ai-chat-bot/agentic-ai-chatbot.ts",
+    "agent:web": "ts-node src/agentic-ai-chat-bot/server.ts",
     "azure:mini": "ts-node src/azuer-custom-model/azure-gpt-mini.ts",
     "chroma": "~/Library/Python/3.9/bin/chroma run --path ./db",
     "clean": "rm -rf dist"
