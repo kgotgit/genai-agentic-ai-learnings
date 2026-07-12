@@ -176,7 +176,7 @@ async function main() {
   await runAgent("Please add 1500 and 2500 together.");
 
   // Triggers Tavily web search
-  await runAgent("Search the web and summarize the latest TypeScript 5.9 highlights.");
+  await runAgent("Search the web and summarize the latest TypeScript 7.0 highlights.");
 }
 
 main().catch(console.error);
