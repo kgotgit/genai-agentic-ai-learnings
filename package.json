@@ -24,6 +24,8 @@
     "agent:chatbot": "ts-node src/agentic-ai-chat-bot/agentic-ai-chatbot.ts",
     "agent:web": "ts-node src/agentic-ai-chat-bot/server.ts",
     "agentic:rag:web": "ts-node src/agentic-rag-example/server.ts",
+    "eval:resume": "ts-node src/resume-eval-agent/cli.ts",
+    "eval:web": "ts-node src/resume-eval-agent/server.ts",
     "azure:mini": "ts-node src/azuer-custom-model/azure-gpt-mini.ts",
     "chroma": "~/Library/Python/3.9/bin/chroma run --path ./db",
     "clean": "rm -rf dist"
@@ -39,7 +41,6 @@
   "dependencies": {
     "@azure/search-documents": "^12.2.0",
     "@huggingface/transformers": "^4.2.0",
-    "@langchain/anthropic": "^1.5.0",
     "@langchain/community": "^1.1.29",
     "@langchain/core": "^1.2.0",
     "@langchain/groq": "^1.0.1",
@@ -48,11 +49,17 @@
     "@langchain/openai": "^1.5.1",
     "@langchain/tavily": "^1.2.0",
     "@types/express": "^5.0.6",
+    "@types/multer": "^1.4.11",
     "chromadb": "^3.4.3",
+    "commander": "^11.0.0",
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
     "faiss-node": "^0.5.1",
+    "groq-sdk": "^0.9.0",
     "langchain": "^1.5.0",
-    "pdf-parse": "^2.4.5"
+    "mammoth": "^1.7.2",
+    "multer": "^1.4.5",
+    "pdf-parse": "^2.4.5",
+    "uuid": "^9.0.0"
   }
 }

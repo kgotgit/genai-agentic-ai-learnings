@@ -1,0 +1,100 @@
+JOB DESCRIPTION: Senior Machine Learning Engineer
+
+Company: TechFin Bank
+Location: Remote
+
+---
+
+JOB TITLE: Senior Machine Learning Engineer
+
+ABOUT THE ROLE
+
+We are looking for an experienced Senior Machine Learning Engineer to lead ML initiatives in our
+Banking and Financial Services division. You will architect and build scalable AI/ML solutions that
+directly impact millions of customers across our platform.
+
+---
+
+KEY RESPONSIBILITIES
+
+• Design, develop, and deploy machine learning models for fraud detection, risk assessment, and
+  customer analytics in a banking environment
+  
+• Lead end-to-end ML projects from concept to production, including data engineering, model training,
+  evaluation, and monitoring
+  
+• Mentor junior machine learning engineers and foster best practices in the ML team
+  
+• Collaborate with product, data, and engineering teams to understand requirements and translate them
+  into technical solutions
+  
+• Optimize model performance and inference latency for real-time applications
+  
+• Ensure compliance with banking regulations and data privacy standards
+
+---
+
+REQUIRED QUALIFICATIONS (MANDATORY)
+
+• 4+ years of professional experience as a Machine Learning Engineer
+• Proficiency in Python and SQL for data processing and model development
+• Strong experience with machine learning frameworks (TensorFlow, PyTorch, or Scikit-learn)
+• Experience building and deploying ML models in production environments
+• Solid understanding of banking domain and financial services
+• AWS or Cloud platform experience (EC2, S3, or equivalent services)
+• Strong communication and leadership skills
+
+---
+
+PREFERRED QUALIFICATIONS
+
+• Experience with Docker and Kubernetes for model deployment
+• Knowledge of Deep Learning and neural networks
+• Experience with LLMs and Generative AI applications
+• Distributed computing experience (Spark, Hadoop)
+• Experience with MLOps and model monitoring frameworks
+• Advanced certification in AWS or cloud platforms
+• Master's degree in Computer Science, Mathematics, or related field
+
+---
+
+WHAT WE LOOK FOR
+
+• Strong problem-solving skills and ability to think creatively
+• Detail-oriented with a passion for data quality and model interpretability
+• Experience working in Agile/Scrum environments
+• Comfortable with ambiguity and rapidly changing priorities
+• Commitment to continuous learning and staying current with AI/ML trends
+
+---
+
+BENEFITS
+
+• Competitive salary and performance bonus
+• Health insurance and retirement benefits
+• Professional development opportunities
+• Flexible working arrangements
+• Collaborative team environment
+
+---
+
+TECHNICAL STACK
+
+- Languages: Python, SQL, Java (preferred)
+- Frameworks: TensorFlow, PyTorch, Scikit-learn
+- Cloud: AWS (Primary), Azure (Secondary)
+- Databases: PostgreSQL, DynamoDB
+- Tools: Docker, Kubernetes, Jenkins, Airflow
+- Domain: Banking, Financial Services, Risk Management
+
+---
+
+APPLICATION INSTRUCTIONS
+
+Please submit:
+1. Updated Resume/CV
+2. Cover Letter
+3. GitHub profile or portfolio (optional but preferred)
+4. References (3-4 professional references)
+
+Candidates must have authorization to work in the target country.
