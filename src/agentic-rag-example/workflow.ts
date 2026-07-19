@@ -32,7 +32,13 @@ export type ChatResult = {
   route: RouteType;
   workflow: WorkflowStep[];
   sources: SourceItem[];
+  memory: MemorySnapshot;
   traceId: string;
+};
+
+export type MemorySnapshot = {
+  rememberedName: string | null;
+  recentTurns: Array<{ role: "user" | "assistant"; content: string }>;
 };
 
 type ThreadStore = Record<string, BaseMessage[]>;
@@ -59,10 +65,31 @@ const DOCS_PATH = path.resolve(process.cwd(), "docs");
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL ?? "Xenova/bge-m3";
 const MIN_CHROMA_SCORE = 0.25;
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY?.trim() ?? "";
+const MEMORY_WINDOW_SIZE = Math.max(
+  1,
+  Number.parseInt(process.env.MEMORY_WINDOW_SIZE ?? "4", 10) || 4
+);
+const MAX_TURN_CHARS = Math.max(
+  80,
+  Number.parseInt(process.env.MAX_TURN_CHARS ?? "220", 10) || 220
+);
+const MAX_WEB_RESULTS_FOR_PROMPT = Math.max(
+  1,
+  Number.parseInt(process.env.MAX_WEB_RESULTS_FOR_PROMPT ?? "2", 10) || 2
+);
+const MAX_RAG_MATCHES_FOR_PROMPT = Math.max(
+  1,
+  Number.parseInt(process.env.MAX_RAG_MATCHES_FOR_PROMPT ?? "2", 10) || 2
+);
+const MAX_SNIPPET_CHARS_FOR_PROMPT = Math.max(
+  120,
+  Number.parseInt(process.env.MAX_SNIPPET_CHARS_FOR_PROMPT ?? "220", 10) || 220
+);
 
 const threadStore: ThreadStore = {};
 const workflowTraceStore: Record<string, WorkflowStep[]> = {};
 const sourceStore: Record<string, SourceItem[]> = {};
+const memoryStore: Record<string, MemorySnapshot> = {};
 
 const tavily = TAVILY_API_KEY
   ? new TavilySearchAPIWrapper({ tavilyApiKey: TAVILY_API_KEY })
@@ -129,6 +156,18 @@ function parseJsonPayload<T>(content: string, prefix: string): T | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Truncates long text so prompt sections stay within predictable token budgets.
+ */
+function truncateText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+
+  const sliced = value.slice(0, Math.max(0, maxChars - 3)).trimEnd();
+  return `${sliced}...`;
 }
 
 /**
@@ -216,6 +255,154 @@ function extractLatestUserQuery(messages: BaseMessage[]): string {
   }
 
   return "";
+}
+
+/**
+ * Returns recent human/AI turns as short-term memory context.
+ */
+function getRecentConversationContext(messages: BaseMessage[], windowSize: number): string {
+  const convo = messages
+    .filter((msg) => msg.getType() === "human" || msg.getType() === "ai")
+    .map((msg) => ({
+      role: msg.getType() === "human" ? "User" : "Assistant",
+      content: String(msg.content),
+    }));
+
+  if (convo.length === 0) {
+    return "";
+  }
+
+  const maxItems = Math.max(2, windowSize * 2);
+  return convo
+    .slice(-maxItems)
+    .map((turn) => `${turn.role}: ${truncateText(turn.content, MAX_TURN_CHARS)}`)
+    .join("\n");
+}
+
+/**
+ * Returns recent conversation turns as structured short-term memory.
+ */
+function getRecentConversationTurns(
+  messages: BaseMessage[],
+  windowSize: number
+): Array<{ role: "user" | "assistant"; content: string }> {
+  const convo: Array<{ role: "user" | "assistant"; content: string }> = messages
+    .filter((msg) => msg.getType() === "human" || msg.getType() === "ai")
+    .map((msg) => ({
+      role: msg.getType() === "human" ? ("user" as const) : ("assistant" as const),
+      content: String(msg.content),
+    }));
+
+  if (convo.length === 0) {
+    return [];
+  }
+
+  const maxItems = Math.max(2, windowSize * 2);
+  return convo.slice(-maxItems);
+}
+
+/**
+ * Tries to extract a user name from recent human messages (e.g., "I am Karthik").
+ */
+function extractRememberedUserName(messages: BaseMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (msg.getType() !== "human") {
+      continue;
+    }
+
+    const text = String(msg.content);
+    const match = text.match(/\b(?:i am|i'm|my name is)\s+([A-Za-z][A-Za-z\s'-]{0,40})/i);
+    if (!match) {
+      continue;
+    }
+
+    const candidate = match[1].trim().replace(/[.,!?;:]+$/, "");
+    if (candidate.length > 0) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Builds a web-search-friendly query by removing personal-memory phrases.
+ */
+function buildWebSearchQuery(userQuery: string): string {
+  const cleaned = userQuery
+    .replace(/\b(?:who am i|do you remember me|what is my name)\b/gi, "")
+    .replace(/\b(?:and|also|then)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned.length > 0 ? cleaned : userQuery;
+}
+
+/**
+ * Compacts web search node output for prompt usage while preserving key facts.
+ */
+function compactWebOutputForPrompt(raw: string): string {
+  if (!raw) {
+    return "<empty>";
+  }
+
+  try {
+    const payload = JSON.parse(raw) as {
+      query?: string;
+      answer?: string;
+      results?: Array<{ title?: string; snippet?: string; content?: string }>;
+      error?: string;
+    };
+
+    const compact = {
+      query: payload.query ?? "",
+      answer: truncateText(payload.answer ?? "", MAX_SNIPPET_CHARS_FOR_PROMPT),
+      error: payload.error,
+      results: (payload.results ?? []).slice(0, MAX_WEB_RESULTS_FOR_PROMPT).map((item) => ({
+        title: item.title ?? "Untitled",
+        snippet: truncateText(
+          item.snippet ?? item.content ?? "",
+          MAX_SNIPPET_CHARS_FOR_PROMPT
+        ),
+      })),
+    };
+
+    return JSON.stringify(compact);
+  } catch {
+    return truncateText(raw, MAX_SNIPPET_CHARS_FOR_PROMPT * 2);
+  }
+}
+
+/**
+ * Compacts Chroma RAG node output for prompt usage while preserving top signals.
+ */
+function compactRagOutputForPrompt(raw: string): string {
+  if (!raw) {
+    return "<empty>";
+  }
+
+  try {
+    const payload = JSON.parse(raw) as Array<{
+      source?: string;
+      content?: string;
+      score?: number;
+    }>;
+
+    if (!Array.isArray(payload)) {
+      return truncateText(raw, MAX_SNIPPET_CHARS_FOR_PROMPT * 2);
+    }
+
+    const compact = payload.slice(0, MAX_RAG_MATCHES_FOR_PROMPT).map((item) => ({
+      source: item.source ?? "unknown",
+      score: typeof item.score === "number" ? Number(item.score.toFixed(3)) : 0,
+      content: truncateText(item.content ?? "", MAX_SNIPPET_CHARS_FOR_PROMPT),
+    }));
+
+    return JSON.stringify(compact);
+  } catch {
+    return truncateText(raw, MAX_SNIPPET_CHARS_FOR_PROMPT * 2);
+  }
 }
 
 /**
@@ -507,6 +694,7 @@ function routeAfterClassification(state: typeof MessagesAnnotation.State): Route
 async function webSearchNode(state: typeof MessagesAnnotation.State) {
   const startedAt = startTimer();
   const query = extractLatestUserQuery(state.messages);
+  const searchQuery = buildWebSearchQuery(query);
 
   if (!tavily) {
     const detail = "Tavily API key is not configured; skipped web search.";
@@ -527,7 +715,7 @@ async function webSearchNode(state: typeof MessagesAnnotation.State) {
 
   try {
     const response = await tavily.rawResults({
-      query,
+      query: searchQuery,
       max_results: 4,
       include_answer: true,
       search_depth: "basic",
@@ -545,6 +733,7 @@ async function webSearchNode(state: typeof MessagesAnnotation.State) {
         buildSystemMessage(`${NODE_TAG}:web_search`, {
           node: "web_search",
           content: JSON.stringify({
+            query: searchQuery,
             answer: response.answer ?? "",
             results: topResults,
           }),
@@ -665,24 +854,35 @@ async function synthesizeNode(state: typeof MessagesAnnotation.State) {
   const startedAt = startTimer();
   const query = extractLatestUserQuery(state.messages);
   const route = extractRouteDecision(state.messages);
+  const shortTermMemory = getRecentConversationContext(state.messages, MEMORY_WINDOW_SIZE);
+  const rememberedName = extractRememberedUserName(state.messages);
   const modelBundle = getLlmBundle();
 
   const webRaw = extractNodeOutput(state.messages, "web_search");
   const ragRaw = extractNodeOutput(state.messages, "chroma_rag");
   const generalRaw = extractNodeOutput(state.messages, "general_llm");
+  const compactWebRaw = compactWebOutputForPrompt(webRaw);
+  const compactRagRaw = compactRagOutputForPrompt(ragRaw);
+  const compactGeneralRaw = truncateText(generalRaw || "<empty>", MAX_SNIPPET_CHARS_FOR_PROMPT);
 
   const prompt = [
     "You are the final response synthesizer in an agent workflow.",
     "Use only available node outputs and do not fabricate citations.",
+    "Use short-term memory from recent turns when useful.",
+    rememberedName
+      ? `If user identity is asked, use the remembered name and greet naturally: ${rememberedName}.`
+      : "If the user asks identity and memory is unavailable, say you do not have enough context.",
     `Selected route: ${route.route}`,
     `Route reason: ${route.reason}`,
     `User query: ${query}`,
+    "recent_conversation_memory:",
+    shortTermMemory || "<empty>",
     "web_search_output:",
-    webRaw || "<empty>",
+    compactWebRaw,
     "chroma_rag_output:",
-    ragRaw || "<empty>",
+    compactRagRaw,
     "general_output:",
-    generalRaw || "<empty>",
+    compactGeneralRaw,
     "Write a concise final answer.",
     "If data is missing from routed node, explain limits briefly and still help.",
   ].join("\n\n");
@@ -823,6 +1023,7 @@ export function clearThread(threadId: string): void {
   threadStore[threadId] = [];
   workflowTraceStore[threadId] = [];
   sourceStore[threadId] = [];
+  memoryStore[threadId] = { rememberedName: null, recentTurns: [] };
 }
 
 /**
@@ -837,6 +1038,21 @@ export function getThreadWorkflow(threadId: string): WorkflowStep[] {
  */
 export function getThreadSources(threadId: string): SourceItem[] {
   return sourceStore[threadId] ?? [];
+}
+
+/**
+ * Returns the latest short-term memory snapshot for a thread.
+ */
+export function getThreadMemorySnapshot(threadId: string): MemorySnapshot {
+  if (memoryStore[threadId]) {
+    return memoryStore[threadId];
+  }
+
+  const history = getThreadHistory(threadId);
+  return {
+    rememberedName: extractRememberedUserName(history),
+    recentTurns: getRecentConversationTurns(history, MEMORY_WINDOW_SIZE),
+  };
 }
 
 /**
@@ -857,16 +1073,22 @@ export async function runAgenticRagChat(threadId: string, message: string): Prom
   const webSources = parseWebSources(extractNodeOutput(result.messages, "web_search"));
   const ragSources = parseRagSources(extractNodeOutput(result.messages, "chroma_rag"));
   const sources = route === "web_search" ? webSources : route === "chroma_rag" ? ragSources : [];
+  const memory: MemorySnapshot = {
+    rememberedName: extractRememberedUserName(result.messages),
+    recentTurns: getRecentConversationTurns(result.messages, MEMORY_WINDOW_SIZE),
+  };
 
   threadStore[threadId] = [...nextMessages, new AIMessage(response)];
   workflowTraceStore[threadId] = workflow;
   sourceStore[threadId] = sources;
+  memoryStore[threadId] = memory;
 
   return {
     response,
     route,
     workflow,
     sources,
+    memory,
     traceId,
   };
 }

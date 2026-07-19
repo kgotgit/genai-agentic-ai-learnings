@@ -3,6 +3,7 @@ import * as dotenv from "dotenv";
 import * as path from "path";
 import {
   clearThread,
+  getThreadMemorySnapshot,
   getThreadSources,
   getThreadTranscript,
   getThreadWorkflow,
@@ -55,6 +56,7 @@ app.post("/api/chat", async (req: Request, res: Response) => {
       route: result.route,
       workflow: result.workflow,
       sources: result.sources,
+      memory: result.memory,
       traceId: result.traceId,
     });
   } catch (error) {
@@ -74,7 +76,11 @@ app.get("/api/workflow/:threadId", (req: Request, res: Response) => {
   const threadId = Array.isArray(req.params.threadId)
     ? req.params.threadId[0]
     : req.params.threadId;
-  return res.json({ workflow: getThreadWorkflow(threadId), sources: getThreadSources(threadId) });
+  return res.json({
+    workflow: getThreadWorkflow(threadId),
+    sources: getThreadSources(threadId),
+    memory: getThreadMemorySnapshot(threadId),
+  });
 });
 
 app.delete("/api/history/:threadId", (req: Request, res: Response) => {

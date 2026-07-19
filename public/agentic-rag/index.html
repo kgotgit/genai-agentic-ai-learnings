@@ -197,7 +197,8 @@
     }
 
     .workflow-list,
-    .sources-list {
+    .sources-list,
+    .memory-list {
       padding: 12px;
       overflow-y: auto;
       display: flex;
@@ -206,7 +207,8 @@
     }
 
     .workflow-card,
-    .source-card {
+    .source-card,
+    .memory-card {
       border: 1px solid var(--line);
       border-radius: 12px;
       padding: 10px;
@@ -302,6 +304,10 @@
         <div id="sources" class="sources-list">
           <div class="small">Source snippets are shown for Tavily/Chroma routes.</div>
         </div>
+        <div class="panel-title">Short-Term Memory</div>
+        <div id="memory" class="memory-list">
+          <div class="small">Remembered name and recent turns appear here.</div>
+        </div>
       </aside>
     </div>
   </div>
@@ -319,6 +325,7 @@
     const sendBtn = document.getElementById("send");
     const workflowEl = document.getElementById("workflow");
     const sourcesEl = document.getElementById("sources");
+    const memoryEl = document.getElementById("memory");
 
     function addBubble(text, who) {
       const el = document.createElement("div");
@@ -371,6 +378,36 @@
         const title = item.url ? `${item.title} (${item.url})` : item.title;
         card.innerHTML = `<strong class="small">${title}</strong><div class="small" style="margin-top:6px;">${item.snippet || ""}</div>`;
         sourcesEl.appendChild(card);
+      });
+    }
+
+    function renderMemory(memory) {
+      memoryEl.innerHTML = "";
+      if (!memory || typeof memory !== "object") {
+        memoryEl.innerHTML = '<div class="small">No memory state available.</div>';
+        return;
+      }
+
+      const nameCard = document.createElement("div");
+      nameCard.className = "memory-card";
+      nameCard.innerHTML = `<strong class="small">Remembered Name</strong><div class="small" style="margin-top:6px;">${memory.rememberedName || "Unknown"}</div>`;
+      memoryEl.appendChild(nameCard);
+
+      const turns = Array.isArray(memory.recentTurns) ? memory.recentTurns : [];
+      if (turns.length === 0) {
+        const emptyCard = document.createElement("div");
+        emptyCard.className = "memory-card";
+        emptyCard.innerHTML = '<div class="small">No recent turns yet.</div>';
+        memoryEl.appendChild(emptyCard);
+        return;
+      }
+
+      turns.slice(-6).forEach((turn) => {
+        const card = document.createElement("div");
+        card.className = "memory-card";
+        const role = turn.role === "user" ? "User" : "Assistant";
+        card.innerHTML = `<strong class="small">${role}</strong><div class="small" style="margin-top:6px;">${turn.content || ""}</div>`;
+        memoryEl.appendChild(card);
       });
     }
 
@@ -438,6 +475,7 @@
         statusEl.textContent = `Route used: ${payload.route} | Trace: ${payload.traceId}`;
         renderWorkflow(payload.workflow || []);
         renderSources(payload.sources || []);
+        renderMemory(payload.memory || null);
       } catch (err) {
         addBubble(`Error: ${err.message}`, "ai");
       } finally {
@@ -465,6 +503,7 @@
         addBubble("Thread cleared. Ask a new question.", "ai");
         renderWorkflow([]);
         renderSources([]);
+        renderMemory(null);
       } catch (err) {
         statusEl.textContent = `Clear failed: ${err.message}`;
       }
