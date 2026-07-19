@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgenticRAG Workflow Demo</title>
+  <style>
+    :root {
+      --bg: #f5efe5;
+      --paper: #fffdf8;
+      --ink: #222023;
+      --muted: #5f5a62;
+      --accent: #d9543f;
+      --accent-strong: #b63f2d;
+      --line: #e7ded2;
+      --ok: #2d6a4f;
+      --warn: #8a5a00;
+      --card-shadow: 0 12px 40px rgba(39, 23, 14, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(217, 84, 63, 0.12), transparent 36%),
+        radial-gradient(circle at 82% 82%, rgba(55, 102, 197, 0.12), transparent 36%),
+        var(--bg);
+      min-height: 100vh;
+      color: var(--ink);
+      padding: 20px;
+    }
+
+    .shell {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+    }
+
+    .topbar {
+      padding: 20px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(140deg, #fff5ee, #fffdf8 48%, #f4f0ff);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+      justify-content: space-between;
+    }
+
+    .title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .auth {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    input,
+    button,
+    textarea {
+      font: inherit;
+    }
+
+    .input {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #fff;
+      min-width: 240px;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 12px;
+      background: var(--accent);
+      color: #fff;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 0.18s ease, background 0.18s ease;
+    }
+
+    .btn:hover {
+      background: var(--accent-strong);
+      transform: translateY(-1px);
+    }
+
+    .btn.secondary {
+      background: #334155;
+    }
+
+    .status {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr;
+      min-height: 72vh;
+    }
+
+    .chat-pane {
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .bubble {
+      max-width: 78%;
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 1.45;
+      animation: rise 0.2s ease;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .bubble.user {
+      margin-left: auto;
+      background: #ffe3de;
+      border: 1px solid #f6c6bc;
+    }
+
+    .bubble.ai {
+      margin-right: auto;
+      background: #f8f8fb;
+      border: 1px solid #e8e8ef;
+    }
+
+    .composer {
+      border-top: 1px solid var(--line);
+      padding: 12px;
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+
+    .composer textarea {
+      flex: 1;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      min-height: 42px;
+      max-height: 140px;
+      resize: vertical;
+    }
+
+    .workflow-pane {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: #fffdfa;
+    }
+
+    .panel-title {
+      border-bottom: 1px solid var(--line);
+      padding: 14px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      color: var(--muted);
+    }
+
+    .workflow-list,
+    .sources-list {
+      padding: 12px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .workflow-card,
+    .source-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: #fff;
+    }
+
+    .workflow-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .pill {
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .pill.ok {
+      background: #d7f1e0;
+      color: var(--ok);
+    }
+
+    .pill.error {
+      background: #ffe3de;
+      color: #9f2f20;
+    }
+
+    .trace-meta {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
+    .small {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 980px) {
+      .main {
+        grid-template-columns: 1fr;
+      }
+
+      .chat-pane {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .workflow-pane {
+        max-height: 40vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <div>
+        <div class="title">AgenticRAG with LangGraph</div>
+        <div class="subtitle">Router node -> Tavily or Chroma or General LLM -> Synthesis node</div>
+      </div>
+      <div class="auth">
+        <input id="email" class="input" type="email" placeholder="you@company.com" />
+        <button id="init" class="btn">Start Thread</button>
+        <button id="clear" class="btn secondary" disabled>Clear</button>
+        <div id="status" class="status">Waiting for thread initialization</div>
+      </div>
+    </div>
+
+    <div class="main">
+      <section class="chat-pane">
+        <div id="messages" class="messages">
+          <div class="small">Start with your email, then ask a question such as: "latest AI release notes" or "what do our local docs say about microsoft".</div>
+        </div>
+        <div class="composer">
+          <textarea id="message" placeholder="Ask your query..." disabled></textarea>
+          <button id="send" class="btn" disabled>Send</button>
+        </div>
+      </section>
+
+      <aside class="workflow-pane">
+        <div class="panel-title">Workflow Trace</div>
+        <div id="workflow" class="workflow-list">
+          <div class="small">Node execution details will appear here after each response.</div>
+        </div>
+        <div class="panel-title">Sources</div>
+        <div id="sources" class="sources-list">
+          <div class="small">Source snippets are shown for Tavily/Chroma routes.</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    let threadId = null;
+    let busy = false;
+
+    const emailEl = document.getElementById("email");
+    const initBtn = document.getElementById("init");
+    const clearBtn = document.getElementById("clear");
+    const statusEl = document.getElementById("status");
+    const messagesEl = document.getElementById("messages");
+    const messageEl = document.getElementById("message");
+    const sendBtn = document.getElementById("send");
+    const workflowEl = document.getElementById("workflow");
+    const sourcesEl = document.getElementById("sources");
+
+    function addBubble(text, who) {
+      const el = document.createElement("div");
+      el.className = `bubble ${who}`;
+      el.textContent = text;
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function renderWorkflow(items) {
+      workflowEl.innerHTML = "";
+      if (!Array.isArray(items) || items.length === 0) {
+        workflowEl.innerHTML = '<div class="small">No workflow events yet.</div>';
+        return;
+      }
+
+      items.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "workflow-card";
+
+        const head = document.createElement("div");
+        head.className = "workflow-head";
+        head.innerHTML = `<strong>${item.node}</strong><span class="pill ${item.status === "ok" ? "ok" : "error"}">${item.status}</span>`;
+
+        const detail = document.createElement("div");
+        detail.className = "small";
+        detail.textContent = item.detail || "-";
+
+        const meta = document.createElement("div");
+        meta.className = "trace-meta";
+        meta.textContent = `${item.durationMs}ms | ${new Date(item.startedAt).toLocaleTimeString()}`;
+
+        card.appendChild(head);
+        card.appendChild(detail);
+        card.appendChild(meta);
+        workflowEl.appendChild(card);
+      });
+    }
+
+    function renderSources(items) {
+      sourcesEl.innerHTML = "";
+      if (!Array.isArray(items) || items.length === 0) {
+        sourcesEl.innerHTML = '<div class="small">No sources for this route.</div>';
+        return;
+      }
+
+      items.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "source-card";
+        const title = item.url ? `${item.title} (${item.url})` : item.title;
+        card.innerHTML = `<strong class="small">${title}</strong><div class="small" style="margin-top:6px;">${item.snippet || ""}</div>`;
+        sourcesEl.appendChild(card);
+      });
+    }
+
+    async function initThread() {
+      const email = emailEl.value.trim();
+      if (!email) {
+        statusEl.textContent = "Enter a valid email first.";
+        return;
+      }
+
+      initBtn.disabled = true;
+
+      try {
+        const res = await fetch("/api/init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to initialize thread");
+        }
+
+        const payload = await res.json();
+        threadId = payload.threadId;
+        statusEl.textContent = `Thread initialized: ${threadId}`;
+        messageEl.disabled = false;
+        sendBtn.disabled = false;
+        clearBtn.disabled = false;
+      } catch (err) {
+        statusEl.textContent = `Init failed: ${err.message}`;
+      } finally {
+        initBtn.disabled = false;
+      }
+    }
+
+    async function sendMessage() {
+      if (!threadId || busy) {
+        return;
+      }
+
+      const message = messageEl.value.trim();
+      if (!message) {
+        return;
+      }
+
+      busy = true;
+      sendBtn.disabled = true;
+      addBubble(message, "user");
+      messageEl.value = "";
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ threadId, message }),
+        });
+
+        if (!res.ok) {
+          throw new Error("Chat request failed");
+        }
+
+        const payload = await res.json();
+        addBubble(payload.response, "ai");
+        statusEl.textContent = `Route used: ${payload.route} | Trace: ${payload.traceId}`;
+        renderWorkflow(payload.workflow || []);
+        renderSources(payload.sources || []);
+      } catch (err) {
+        addBubble(`Error: ${err.message}`, "ai");
+      } finally {
+        busy = false;
+        sendBtn.disabled = false;
+        messageEl.focus();
+      }
+    }
+
+    async function clearHistory() {
+      if (!threadId) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/history/${encodeURIComponent(threadId)}`, {
+          method: "DELETE",
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to clear thread");
+        }
+
+        messagesEl.innerHTML = "";
+        addBubble("Thread cleared. Ask a new question.", "ai");
+        renderWorkflow([]);
+        renderSources([]);
+      } catch (err) {
+        statusEl.textContent = `Clear failed: ${err.message}`;
+      }
+    }
+
+    initBtn.addEventListener("click", initThread);
+    clearBtn.addEventListener("click", clearHistory);
+    sendBtn.addEventListener("click", sendMessage);
+
+    emailEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        initThread();
+      }
+    });
+
+    messageEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+</html>
