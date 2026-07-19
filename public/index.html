@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🤖 Agentic AI Chatbot</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 900px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      display: flex;
+      flex-direction: column;
+      height: 90vh;
+      max-height: 800px;
+    }
+
+    /* ─── Header ─────────────────────────────────────────────────────────── */
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 12px 12px 0 0;
+      text-align: center;
+      border-bottom: 3px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .header p {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    /* ─── Auth Section ───────────────────────────────────────────────────── */
+    .auth-section {
+      padding: 20px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .auth-section.hidden {
+      display: none;
+    }
+
+    .email-input {
+      flex: 1;
+      padding: 10px 15px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    .email-input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .btn-init {
+      padding: 10px 20px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.3s;
+    }
+
+    .btn-init:hover {
+      background: #5568d3;
+    }
+
+    .btn-init:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .auth-status {
+      padding: 10px 15px;
+      background: white;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .auth-status.active {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    /* ─── Chat Area ──────────────────────────────────────────────────────── */
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      background: #ffffff;
+    }
+
+    .messages::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .messages::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    .messages::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 4px;
+    }
+
+    .messages::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+
+    .message {
+      display: flex;
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .message.user {
+      justify-content: flex-end;
+    }
+
+    .message.agent {
+      justify-content: flex-start;
+    }
+
+    .message-content {
+      max-width: 70%;
+      padding: 12px 16px;
+      border-radius: 8px;
+      word-wrap: break-word;
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .message.user .message-content {
+      background: #667eea;
+      color: white;
+      border-bottom-right-radius: 2px;
+    }
+
+    .message.agent .message-content {
+      background: #e9ecef;
+      color: #333;
+      border-bottom-left-radius: 2px;
+    }
+
+    .message-timestamp {
+      font-size: 11px;
+      opacity: 0.6;
+      margin-top: 5px;
+      padding: 0 10px;
+    }
+
+    .message.user .message-timestamp {
+      text-align: right;
+    }
+
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 10px 16px;
+    }
+
+    .typing-dot {
+      width: 8px;
+      height: 8px;
+      background: #999;
+      border-radius: 50%;
+      animation: typing 1.4s infinite;
+    }
+
+    .typing-dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .typing-dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes typing {
+      0%,
+      60%,
+      100% {
+        transform: translateY(0);
+        opacity: 0.5;
+      }
+      30% {
+        transform: translateY(-10px);
+        opacity: 1;
+      }
+    }
+
+    /* ─── Input Area ─────────────────────────────────────────────────────── */
+    .input-area {
+      padding: 15px;
+      background: #f8f9fa;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      gap: 10px;
+    }
+
+    .input-area.hidden {
+      display: none;
+    }
+
+    .message-input {
+      flex: 1;
+      padding: 12px 15px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.3s;
+      resize: none;
+      max-height: 100px;
+    }
+
+    .message-input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .message-input::placeholder {
+      color: #999;
+    }
+
+    .btn-send {
+      padding: 12px 20px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.3s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .btn-send:hover:not(:disabled) {
+      background: #5568d3;
+    }
+
+    .btn-send:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .btn-clear {
+      padding: 10px 15px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.3s;
+    }
+
+    .btn-clear:hover {
+      background: #c82333;
+    }
+
+    /* ─── Empty State ────────────────────────────────────────────────────── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #999;
+      text-align: center;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 15px;
+      opacity: 0.5;
+    }
+
+    .empty-state-text {
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    .empty-state-subtext {
+      font-size: 12px;
+      opacity: 0.7;
+      margin-top: 8px;
+    }
+
+    /* ─── Error Message ──────────────────────────────────────────────────── */
+    .error-message {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 12px 15px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border: 1px solid #f5c6cb;
+    }
+
+    /* ─── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .message-content {
+        max-width: 90%;
+      }
+
+      .header h1 {
+        font-size: 18px;
+      }
+
+      .btn-send span {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>🤖 Agentic AI Chatbot</h1>
+      <p>Powered by Groq LLM & Tavily Search</p>
+    </div>
+
+    <!-- Auth Section -->
+    <div class="auth-section" id="authSection">
+      <input
+        type="email"
+        id="emailInput"
+        class="email-input"
+        placeholder="Enter your email address"
+        autocomplete="email"
+      />
+      <button class="btn-init" id="btnInit">Initialize Thread</button>
+      <span class="auth-status" id="authStatus"></span>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="chat-container">
+      <div class="messages" id="messagesContainer">
+        <div class="empty-state">
+          <div class="empty-state-icon">💬</div>
+          <div class="empty-state-text">No messages yet</div>
+          <div class="empty-state-subtext">Initialize with your email to start chatting</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="input-area" id="inputArea">
+      <input
+        type="text"
+        id="messageInput"
+        class="message-input"
+        placeholder="Type your message..."
+        disabled
+      />
+      <button class="btn-send" id="btnSend" disabled>
+        <span>Send</span> ➤
+      </button>
+      <button class="btn-clear" id="btnClear" style="display: none;">Clear</button>
+    </div>
+  </div>
+
+  <script>
+    // ─── State Management ────────────────────────────────────────────────────
+    let threadId = null;
+    let isLoading = false;
+    const messageHistory = [];
+
+    const authSection = document.getElementById("authSection");
+    const emailInput = document.getElementById("emailInput");
+    const btnInit = document.getElementById("btnInit");
+    const authStatus = document.getElementById("authStatus");
+    const messagesContainer = document.getElementById("messagesContainer");
+    const inputArea = document.getElementById("inputArea");
+    const messageInput = document.getElementById("messageInput");
+    const btnSend = document.getElementById("btnSend");
+    const btnClear = document.getElementById("btnClear");
+
+    // ─── Email Validation ────────────────────────────────────────────────────
+    function isValidEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    // ─── Display Message ────────────────────────────────────────────────────
+    function displayMessage(text, isUser) {
+      const messageEl = document.createElement("div");
+      messageEl.className = `message ${isUser ? "user" : "agent"}`;
+
+      const contentEl = document.createElement("div");
+      contentEl.className = "message-content";
+      contentEl.textContent = text;
+
+      messageEl.appendChild(contentEl);
+
+      const timestamp = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const timestampEl = document.createElement("div");
+      timestampEl.className = "message-timestamp";
+      timestampEl.textContent = timestamp;
+
+      messageEl.appendChild(timestampEl);
+
+      messagesContainer.appendChild(messageEl);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    // ─── Show Typing Indicator ───────────────────────────────────────────────
+    function showTypingIndicator() {
+      const messageEl = document.createElement("div");
+      messageEl.className = "message agent";
+      messageEl.id = "typingIndicator";
+
+      const typingDiv = document.createElement("div");
+      typingDiv.className = "typing-indicator";
+      for (let i = 0; i < 3; i++) {
+        const dot = document.createElement("div");
+        dot.className = "typing-dot";
+        typingDiv.appendChild(dot);
+      }
+
+      messageEl.appendChild(typingDiv);
+      messagesContainer.appendChild(messageEl);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    // ─── Remove Typing Indicator ────────────────────────────────────────────
+    function removeTypingIndicator() {
+      const indicator = document.getElementById("typingIndicator");
+      if (indicator) {
+        indicator.remove();
+      }
+    }
+
+    // ─── Clear Empty State ───────────────────────────────────────────────────
+    function clearEmptyState() {
+      messagesContainer.innerHTML = "";
+    }
+
+    // ─── Initialize Thread ──────────────────────────────────────────────────
+    async function initializeThread() {
+      const email = emailInput.value.trim();
+
+      if (!isValidEmail(email)) {
+        authStatus.textContent = "❌ Invalid email";
+        authStatus.style.color = "#dc3545";
+        return;
+      }
+
+      btnInit.disabled = true;
+      btnInit.textContent = "Initializing...";
+
+      try {
+        const response = await fetch("/api/init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to initialize");
+        }
+
+        const data = await response.json();
+        threadId = data.threadId;
+
+        authStatus.textContent = `✅ Logged in as ${threadId}`;
+        authStatus.classList.add("active");
+        emailInput.disabled = true;
+        btnInit.style.display = "none";
+        messageInput.disabled = false;
+        btnSend.disabled = false;
+        btnClear.style.display = "block";
+
+        clearEmptyState();
+        displayMessage(
+          "Hello! I'm your AI assistant. I can answer questions and search the web for you. What would you like to know?",
+          false
+        );
+      } catch (error) {
+        authStatus.textContent = `❌ ${error.message}`;
+        authStatus.style.color = "#dc3545";
+        btnInit.disabled = false;
+        btnInit.textContent = "Initialize Thread";
+      }
+    }
+
+    // ─── Send Message ───────────────────────────────────────────────────────
+    async function sendMessage() {
+      const message = messageInput.value.trim();
+
+      if (!message || !threadId || isLoading) {
+        return;
+      }
+
+      isLoading = true;
+      btnSend.disabled = true;
+      messageInput.disabled = true;
+
+      displayMessage(message, true);
+      messageInput.value = "";
+      showTypingIndicator();
+
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ threadId, message }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to send message");
+        }
+
+        const data = await response.json();
+        removeTypingIndicator();
+        displayMessage(data.response, false);
+      } catch (error) {
+        removeTypingIndicator();
+        displayMessage(`Error: ${error.message}`, false);
+      } finally {
+        isLoading = false;
+        btnSend.disabled = false;
+        messageInput.disabled = false;
+        messageInput.focus();
+      }
+    }
+
+    // ─── Clear History ──────────────────────────────────────────────────────
+    async function clearHistory() {
+      if (!confirm("Are you sure you want to clear the conversation history?")) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/history/${threadId}`, {
+          method: "DELETE",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to clear history");
+        }
+
+        messagesContainer.innerHTML = "";
+        displayMessage("History cleared. Starting fresh! How can I help?", false);
+      } catch (error) {
+        displayMessage(`Error: ${error.message}`, false);
+      }
+    }
+
+    // ─── Event Listeners ────────────────────────────────────────────────────
+    btnInit.addEventListener("click", initializeThread);
+
+    emailInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter" && !threadId) {
+        initializeThread();
+      }
+    });
+
+    btnSend.addEventListener("click", sendMessage);
+
+    messageInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && threadId && !isLoading) {
+        sendMessage();
+      }
+    });
+
+    btnClear.addEventListener("click", clearHistory);
+
+    messageInput.addEventListener("focus", () => {
+      if (threadId) {
+        btnSend.disabled = false;
+      }
+    });
+
+    // ─── Initialize ─────────────────────────────────────────────────────────
+    emailInput.focus();
+  </script>
+</body>
+</html>

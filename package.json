@@ -20,6 +20,10 @@
     "eval:dialogsum:dev": "ts-node src/dialogsum-eval.ts",
     "chatbot": "ts-node src/chatbot.ts",
     "agent": "ts-node src/langchain-agent.ts",
+    "agent:sequential": "ts-node src/langchain-sequential-agent.ts",
+    "agent:chatbot": "ts-node src/agentic-ai-chat-bot/agentic-ai-chatbot.ts",
+    "agent:web": "ts-node src/agentic-ai-chat-bot/server.ts",
+    "agentic:rag:web": "ts-node src/agentic-rag-example/server.ts",
     "azure:mini": "ts-node src/azuer-custom-model/azure-gpt-mini.ts",
     "chroma": "~/Library/Python/3.9/bin/chroma run --path ./db",
     "clean": "rm -rf dist"
@@ -42,6 +46,7 @@
     "@langchain/langgraph": "^1.4.4",
     "@langchain/ollama": "^1.3.0",
     "@langchain/openai": "^1.5.1",
+    "@langchain/tavily": "^1.2.0",
     "@types/express": "^5.0.6",
     "chromadb": "^3.4.3",
     "dotenv": "^16.6.1",
