@@ -11,6 +11,36 @@ This is a separate example from the existing chatbot.
 - Uses a final `synthesize_response` node to generate the final answer.
 - Returns workflow trace logs and source snippets to the UI.
 
+## Workflow Diagram
+
+```mermaid
+flowchart TD
+  A[User Query] --> B[classify_query]
+
+  B -->|web_search| C[web_search node\nTavily API]
+  B -->|chroma_rag| D[chroma_rag node\nChroma retrieval]
+  B -->|general_llm| E[general_llm node]
+
+  C --> F[synthesize_response]
+  D --> F
+  E --> F
+
+  F --> G[Final AI Answer]
+
+  subgraph Observability
+    H[Workflow Trace\nnode, status, duration]
+    I[Sources\nweb links or local snippets]
+  end
+
+  C -. emits .-> H
+  D -. emits .-> H
+  E -. emits .-> H
+  F -. emits .-> H
+
+  C -. emits .-> I
+  D -. emits .-> I
+```
+
 ## Run
 
 1. Ensure `.env` contains:
